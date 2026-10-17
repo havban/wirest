@@ -428,7 +428,12 @@ fn ago(ts: u64) -> String {
 
 fn status_dot(ui: &mut egui::Ui, up: bool, busy: bool) {
     let color = if busy { ORANGE } else if up { GREEN } else { GRAY };
-    ui.label(RichText::new("●").color(color));
+    paint_dot(ui, color);
+}
+
+fn paint_dot(ui: &mut egui::Ui, color: Color32) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+    ui.painter().circle_filled(rect.center(), 4.0, color);
 }
 
 fn row(ui: &mut egui::Ui, label: &str, value: impl Into<egui::WidgetText>) {
@@ -481,8 +486,9 @@ impl eframe::App for App {
                             {
                                 act = Some(Action::RevokeSudo);
                             }
-                            ui.label(RichText::new("● Live stats").color(GREEN).small())
+                            ui.label(RichText::new("Live stats").color(GREEN).small())
                                 .on_hover_text("wg/wg-quick run via passwordless sudo");
+                            paint_dot(ui, GREEN);
                         } else if ui
                             .button("Enable passwordless control…")
                             .on_hover_text(
@@ -544,7 +550,7 @@ impl eframe::App for App {
             .show(ctx, |ui| {
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    if ui.button("＋ New").clicked() {
+                    if ui.button("+ New").clicked() {
                         act = Some(Action::OpenNew);
                     }
                     if ui.button("Import…").clicked() {
@@ -785,7 +791,7 @@ fn overview(ui: &mut egui::Ui, t: &Tunnel, up: bool, stats: Option<&IfaceStats>,
                     }
                     if let Some(l) = live {
                         row(ui, "Latest handshake", ago(l.latest_handshake));
-                        row(ui, "Transfer", format!("↓ {}   ↑ {}", human_bytes(l.rx), human_bytes(l.tx)));
+                        row(ui, "Transfer", format!("{} received · {} sent", human_bytes(l.rx), human_bytes(l.tx)));
                     }
                 });
             });
