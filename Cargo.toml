@@ -5,7 +5,7 @@ edition = "2021"
 description = "A small macOS GUI for managing WireGuard tunnels via wg-quick"
 
 [dependencies]
-eframe = "0.31"
+eframe = "0.32"
 rfd = "0.15"
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 getrandom = "0.2"
