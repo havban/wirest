@@ -82,8 +82,8 @@ pub fn parse(text: &str) -> Parsed {
                 let iface = &mut p.interface;
                 match key.as_str() {
                     "privatekey" => {
-                        if !valid_key(&value) {
-                            p.errors.push(format!("Line {ln}: PrivateKey is not a valid key"));
+                        if let Some(e) = key_error(ln, "PrivateKey", &value) {
+                            p.errors.push(e);
                         }
                         iface.private_key = Some(value);
                     }
@@ -100,18 +100,26 @@ pub fn parse(text: &str) -> Parsed {
                 let peer = p.peers.last_mut().expect("peer section pushed a peer");
                 match key.as_str() {
                     "publickey" => {
-                        if !valid_key(&value) {
-                            p.errors.push(format!("Line {ln}: PublicKey is not a valid key"));
+                        if let Some(e) = key_error(ln, "PublicKey", &value) {
+                            p.errors.push(e);
                         }
                         peer.public_key = Some(value);
                     }
                     "presharedkey" => {
-                        if !valid_key(&value) {
-                            p.errors.push(format!("Line {ln}: PresharedKey is not a valid key"));
+                        if let Some(e) = key_error(ln, "PresharedKey", &value) {
+                            p.errors.push(e);
                         }
                         peer.has_psk = true;
                     }
-                    "endpoint" => peer.endpoint = Some(value),
+                    "endpoint" => {
+                        let host = value.rsplit_once(':').map_or(value.as_str(), |(h, _)| h);
+                        if host == "example.com" || host.ends_with(".example.com") {
+                            p.errors.push(format!(
+                                "Line {ln}: Endpoint is still the example placeholder; use your server's host:port"
+                            ));
+                        }
+                        peer.endpoint = Some(value);
+                    }
                     "allowedips" => peer.allowed_ips.extend(split_list(&value)),
                     "persistentkeepalive" => peer.keepalive = Some(value),
                     _ => p.errors.push(format!("Line {ln}: unknown [Peer] key `{key}`")),
@@ -139,6 +147,21 @@ fn split_list(v: &str) -> Vec<String> {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect()
+}
+
+fn key_error(ln: usize, field: &str, value: &str) -> Option<String> {
+    if value.is_empty() {
+        let hint = match field {
+            "PublicKey" => "; paste your server's public key",
+            "PrivateKey" => "; use + New to generate one",
+            _ => "",
+        };
+        Some(format!("Line {ln}: {field} is empty{hint}"))
+    } else if !valid_key(value) {
+        Some(format!("Line {ln}: {field} is not a valid key (expected 44 base64 characters)"))
+    } else {
+        None
+    }
 }
 
 fn decode_key(s: &str) -> Option<[u8; 32]> {
@@ -286,6 +309,14 @@ mod tests {
     fn reports_errors() {
         let p = parse("[Interface]\nAddress = 10.0.0.2/32\nBogus\n[Peer]\nEndpoint = x:1\n");
         assert_eq!(p.errors.len(), 3, "{:?}", p.errors);
+    }
+
+    #[test]
+    fn template_needs_server_details() {
+        let p = parse(&template(&generate_private_key()));
+        assert_eq!(p.errors.len(), 2, "{:?}", p.errors);
+        assert!(p.errors[0].contains("PublicKey is empty"));
+        assert!(p.errors[1].contains("example placeholder"));
     }
 
     #[test]

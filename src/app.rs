@@ -607,11 +607,20 @@ impl eframe::App for App {
                 ui.label(RichText::new(state).color(GRAY));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let label = if up { "Deactivate" } else { "Activate" };
+                    // A broken config can't come up, but an active tunnel can always go down.
+                    let blocked = !up && !t.parsed.errors.is_empty();
                     let btn = egui::Button::new(RichText::new(label).strong())
                         .min_size(egui::vec2(110.0, 28.0));
-                    let btn = if up { btn } else { btn.fill(GREEN.gamma_multiply(0.55)) };
-                    if ui.add_enabled(!busy, btn).clicked() {
+                    let btn = if up || blocked { btn } else { btn.fill(GREEN.gamma_multiply(0.55)) };
+                    let resp = ui.add_enabled(!busy && !blocked, btn);
+                    if resp.clicked() {
                         act = Some(Action::Toggle(t.name.clone()));
+                    }
+                    if blocked {
+                        resp.on_disabled_hover_text(t.parsed.errors.join("\n"));
+                        let n = t.parsed.errors.len();
+                        let issues = if n == 1 { "1 issue" } else { &format!("{n} issues") };
+                        ui.label(RichText::new(format!("Fix {issues} to activate")).color(ORANGE).small());
                     }
                     if busy {
                         ui.spinner();
@@ -774,7 +783,7 @@ fn overview(ui: &mut egui::Ui, t: &Tunnel, up: bool, stats: Option<&IfaceStats>,
             egui::Frame::group(ui.style()).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 egui::Grid::new(("peer", n)).num_columns(2).spacing([16.0, 6.0]).show(ui, |ui| {
-                    if let Some(pk) = &peer.public_key {
+                    if let Some(pk) = peer.public_key.as_ref().filter(|k| !k.is_empty()) {
                         key_row(ui, "Public key", pk);
                     }
                     if peer.has_psk {
