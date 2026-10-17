@@ -1,8 +1,19 @@
 # Wirus
 
 A small native macOS GUI for WireGuard, written in Rust ([egui/eframe](https://github.com/emilk/egui)).
-It manages tunnel configs and drives `wg-quick` / `wg` from
-[wireguard-tools](https://www.wireguard.com/install/).
+It manages tunnel configs and drives `wg-quick` / `wg`. Everything it needs is built from source and
+bundled inside `Wirus.app` — no Homebrew, no Go.
+
+## Quick start
+
+```sh
+./run.sh            # installs what's missing, builds dist/Wirus.app and opens it
+./run.sh --install  # same, and copies it to /Applications
+```
+
+The only thing you may be asked for is Xcode Command Line Tools (`run.sh` opens Apple's installer if
+they are missing). Rust is installed via [rustup](https://rustup.rs) if absent. The first build takes
+a couple of minutes; later runs reuse the cache in `.deps/`.
 
 ## Features
 
@@ -15,21 +26,22 @@ It manages tunnel configs and drives `wg-quick` / `wg` from
 - Live stats per peer — latest handshake and rx/tx — when passwordless control is enabled
 - Log panel with `wg-quick` output
 
-## Requirements
+## Bundled tools
 
-```sh
-brew install wireguard-tools   # provides wg, wg-quick, wireguard-go and bash 4+
-```
+`scripts/deps.sh` downloads pinned, checksum-verified sources and builds into `.deps/out/bin`,
+which `bundle.sh` copies to `Wirus.app/Contents/Resources/bin`:
 
-Rust 1.81+ to build.
+| Tool | Source | Why |
+| --- | --- | --- |
+| `wg`, `wg-quick` | [wireguard-tools](https://git.zx2c4.com/wireguard-tools/) 1.0.20250521 (C) | configure interfaces |
+| `boringtun-cli` | [BoringTun](https://github.com/cloudflare/boringtun) 0.6.0 (Rust, `cargo install`) | userspace WireGuard, replaces `wireguard-go` |
+| `bash` | GNU bash 5.3 | `wg-quick` needs bash ≥ 4; macOS ships 3.2 |
 
-## Build & run
+`wg-quick` launches `wireguard-go` from its own directory; a two-line shim with that name starts
+`boringtun-cli --disable-drop-privileges` instead. If no bundled tools are found, Wirus falls back to
+a Homebrew `wireguard-tools` install.
 
-```sh
-cargo run --release
-./bundle.sh                     # creates dist/Wirus.app
-cp -R dist/Wirus.app /Applications/
-```
+Note: bash and wireguard-tools are GPL; if you redistribute `Wirus.app`, include their sources.
 
 ## How it works
 
@@ -40,7 +52,7 @@ Bringing tunnels up/down needs root. By default Wirus asks through the standard 
 password prompt each time.
 
 **Passwordless control** (button in the toolbar) installs `/etc/sudoers.d/wirus` allowing your
-user to run `wg` and `wg-quick` via `sudo` without a password. This removes the prompt and lets Wirus
+user to run the bundled `wg-quick` (via the bundled bash) and `wg show` via `sudo` without a password. This removes the prompt and lets Wirus
 poll `wg show all dump` for live handshake/transfer stats. You can revoke it from the toolbar.
 
 > ⚠️ `wg-quick` executes `PreUp`/`PostUp`/`PreDown`/`PostDown` commands from config files as root.
@@ -49,9 +61,10 @@ poll `wg show all dump` for live handshake/transfer stats. You can revoke it fro
 
 ## Troubleshooting
 
-- **"wireguard-tools not found"** — install them with Homebrew, then restart Wirus.
-- **`Version mismatch: bash 3 detected`** — `wg-quick` needs Homebrew's bash. Wirus puts
-  `/opt/homebrew/bin` first in `PATH`, but a `secure_path` in your sudoers config can override it.
+- **"WireGuard tools not found"** — run `./run.sh` (or `./scripts/deps.sh`) and relaunch.
+- **Moved the app after enabling passwordless control?** The sudoers rule names the tool paths; click
+  *Revoke* and enable it again.
+- BoringTun logs to `/tmp/boringtun.out`.
 - Status shows inactive for a tunnel started outside Wirus — without passwordless control the app
   can only track tunnels it started itself.
 

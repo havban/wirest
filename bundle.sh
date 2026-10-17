@@ -1,12 +1,15 @@
 #!/bin/bash
-# Builds a release binary and wraps it in dist/Wirus.app.
+# Builds a release binary and wraps it, with the WireGuard tools from
+# scripts/deps.sh, in dist/Wirus.app.
 set -euo pipefail
 cd "$(dirname "$0")"
+./scripts/deps.sh
 cargo build --release
 APP=dist/Wirus.app
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/bin"
 cp target/release/wirus "$APP/Contents/MacOS/wirus"
+cp -p .deps/out/bin/* "$APP/Contents/Resources/bin/"
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -25,4 +28,4 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
-echo "Built $APP"
+echo "==> Built $APP"

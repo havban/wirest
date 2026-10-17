@@ -2,3 +2,4 @@
 /dist
 *.conf
 .DS_Store
+/.deps

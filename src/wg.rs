@@ -4,28 +4,56 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-/// GUI apps get a minimal PATH; wg-quick needs Homebrew's bash 4+ and
-/// wireguard-go, so make sure Homebrew's prefixes come first.
+/// GUI apps get a minimal PATH; the tools' own directory is prepended to this.
 const PATH_ENV: &str = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 const SUDOERS_FILE: &str = "/etc/sudoers.d/wirus";
 
 #[derive(Clone)]
 pub struct Tools {
+    pub dir: PathBuf,
     pub wg: PathBuf,
     pub wg_quick: PathBuf,
+    /// wg-quick needs bash >= 4; it is always run through this one so a
+    /// reset PATH under sudo can't pick macOS's bash 3.2.
+    pub bash: PathBuf,
+    pub bundled: bool,
+}
+
+/// Candidate tool directories, most preferred first: inside the .app
+/// bundle, the dev build from scripts/deps.sh, then Homebrew.
+fn tool_dirs() -> Vec<(PathBuf, bool)> {
+    let mut dirs = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(contents) = exe.parent().and_then(Path::parent) {
+            dirs.push((contents.join("Resources/bin"), true));
+        }
+    }
+    if cfg!(debug_assertions) {
+        dirs.push((Path::new(env!("CARGO_MANIFEST_DIR")).join(".deps/out/bin"), true));
+    }
+    for d in ["/opt/homebrew/bin", "/usr/local/bin"] {
+        dirs.push((PathBuf::from(d), false));
+    }
+    dirs
 }
 
 pub fn find_tools() -> Option<Tools> {
-    let find = |name: &str| {
-        ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
-            .iter()
-            .map(|d| Path::new(d).join(name))
-            .find(|p| p.exists())
-    };
-    Some(Tools {
-        wg: find("wg")?,
-        wg_quick: find("wg-quick")?,
+    tool_dirs().into_iter().find_map(|(dir, bundled)| {
+        let t = Tools {
+            wg: dir.join("wg"),
+            wg_quick: dir.join("wg-quick"),
+            bash: dir.join("bash"),
+            dir,
+            bundled,
+        };
+        (t.wg.exists() && t.wg_quick.exists() && t.bash.exists()).then_some(t)
     })
+}
+
+impl Tools {
+    fn path_env(&self) -> String {
+        format!("{}:{PATH_ENV}", self.dir.display())
+    }
 }
 
 #[derive(Clone)]
@@ -45,7 +73,7 @@ pub struct IfaceStats {
 }
 
 fn run(cmd: &mut Command) -> Result<String, String> {
-    match cmd.env("PATH", PATH_ENV).stdin(Stdio::null()).output() {
+    match cmd.stdin(Stdio::null()).output() {
         Ok(o) => {
             let mut s = String::from_utf8_lossy(&o.stdout).into_owned();
             s.push_str(&String::from_utf8_lossy(&o.stderr));
@@ -77,10 +105,12 @@ fn as_admin(sh: &str, prompt: &str) -> Result<String, String> {
     run(Command::new("/usr/bin/osascript").arg("-e").arg(script))
 }
 
-fn sudo_can(path: &Path) -> bool {
+/// `sudo -l` only says whether a command is permitted at all (any admin
+/// is), so probe by running harmless commands without a password instead.
+fn sudo_runs(cmd: &[&Path]) -> bool {
     Command::new("/usr/bin/sudo")
-        .args(["-n", "-l"])
-        .arg(path)
+        .arg("-n")
+        .args(cmd)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -90,7 +120,8 @@ fn sudo_can(path: &Path) -> bool {
 
 /// True when both tools can be run as root without a password prompt.
 pub fn sudo_allowed(t: &Tools) -> bool {
-    sudo_can(&t.wg_quick) && sudo_can(&t.wg)
+    sudo_runs(&[&t.bash, &t.wg_quick, Path::new("--help")])
+        && sudo_runs(&[&t.wg, Path::new("show"), Path::new("all"), Path::new("dump")])
 }
 
 pub fn sudoers_installed() -> bool {
@@ -102,12 +133,16 @@ pub fn quick(t: &Tools, sudo_ok: bool, verb: &str, conf: &Path) -> Result<String
     if sudo_ok {
         return run(Command::new("/usr/bin/sudo")
             .arg("-n")
+            .arg(&t.bash)
             .arg(&t.wg_quick)
             .arg(verb)
-            .arg(conf));
+            .arg(conf)
+            .env("PATH", t.path_env()));
     }
     let sh = format!(
-        "export PATH={PATH_ENV}; {} {verb} {} 2>&1",
+        "export PATH={}; {} {} {verb} {} 2>&1",
+        shq(&t.path_env()),
+        shq(&t.bash.to_string_lossy()),
         shq(&t.wg_quick.to_string_lossy()),
         shq(&conf.to_string_lossy())
     );
@@ -119,10 +154,13 @@ pub fn install_sudoers(t: &Tools) -> Result<String, String> {
     if user.is_empty() || !user.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) {
         return Err(format!("unsupported user name {user:?}"));
     }
+    // sudoers needs spaces in paths escaped.
+    let esc = |p: &Path| p.display().to_string().replace(' ', "\\ ");
     let rule = format!(
-        "{user} ALL=(root) NOPASSWD: {}, {}",
-        t.wg.display(),
-        t.wg_quick.display()
+        "{user} ALL=(root) NOPASSWD: {} {} *, {} show *",
+        esc(&t.bash),
+        esc(&t.wg_quick),
+        esc(&t.wg)
     );
     let sh = format!(
         "f=$(/usr/bin/mktemp) && printf '%s\\n' {} > \"$f\" && /usr/sbin/visudo -cf \"$f\" >/dev/null \

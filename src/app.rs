@@ -124,8 +124,12 @@ impl App {
             app.push_log(format!("Cannot create {}: {e}", app.dir.display()));
         }
         match tools {
-            Some(t) => spawn_poller(t, app.tx.clone(), cc.egui_ctx.clone()),
-            None => app.push_log("wireguard-tools not found (brew install wireguard-tools)".into()),
+            Some(t) => {
+                let source = if t.bundled { "bundled" } else { "Homebrew" };
+                app.push_log(format!("Using {source} WireGuard tools from {}", t.dir.display()));
+                spawn_poller(t, app.tx.clone(), cc.egui_ctx.clone());
+            }
+            None => app.push_log("WireGuard tools not found; build them with ./run.sh".into()),
         }
         app.reload();
         if let Some(first) = app.tunnels.first().map(|t| t.name.clone()) {
@@ -247,7 +251,7 @@ impl App {
 
     fn toggle(&mut self, name: &str, ctx: &egui::Context) {
         let Some(tools) = self.tools.clone() else {
-            self.push_log("Install wireguard-tools first: brew install wireguard-tools".into());
+            self.push_log("WireGuard tools not found; build them with ./run.sh".into());
             self.show_log = true;
             return;
         };
@@ -512,10 +516,10 @@ impl eframe::App for App {
                     .corner_radius(6.0)
                     .show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {
-                            ui.label(RichText::new("wireguard-tools not found.").strong());
-                            ui.label("Install with");
-                            ui.code("brew install wireguard-tools");
-                            ui.label("then restart Wirus. You can still create and edit tunnels.");
+                            ui.label(RichText::new("WireGuard tools not found.").strong());
+                            ui.label("Build them with");
+                            ui.code("./run.sh");
+                            ui.label("(no Homebrew needed). You can still create and edit tunnels.");
                         });
                     });
             }
