@@ -19,6 +19,16 @@ BASH_VER=5.3
 BASH_SHA=0d5cd86965f869a26cf64f4b71be7b96f90a3ba8b3d74e27e8e9d9d5550f31ba
 BORINGTUN_VER=0.6.0
 
+# Oldest macOS the bundled tools run on (clang defaults to the build machine's).
+export MACOSX_DEPLOYMENT_TARGET=11.0
+
+# Bump BUILD_REV when the build settings or patches below change; a new
+# stamp forces every tool to be rebuilt.
+BUILD_REV=2
+STAMP="$OUT/.build-$BUILD_REV-macos-$MACOSX_DEPLOYMENT_TARGET"
+if [[ ! -f "$STAMP" ]]; then
+    rm -rf "$OUT" "$DEPS/boringtun"
+fi
 mkdir -p "$SRC" "$OUT"
 
 fetch() { # url sha256 dest
@@ -30,9 +40,7 @@ fetch() { # url sha256 dest
     fi
 }
 
-# Bump when the wg patch below changes, to force a rebuild.
-WG_PATCH_STAMP="$OUT/.wg-patch-1"
-if [[ ! -x "$OUT/wg" || ! -f "$OUT/wg-quick" || ! -f "$WG_PATCH_STAMP" ]]; then
+if [[ ! -x "$OUT/wg" || ! -f "$OUT/wg-quick" ]]; then
     tarball="$SRC/wireguard-tools-$WG_TOOLS_VER.tar.xz"
     fetch "https://git.zx2c4.com/wireguard-tools/snapshot/wireguard-tools-$WG_TOOLS_VER.tar.xz" "$WG_TOOLS_SHA" "$tarball"
     rm -rf "$SRC/wireguard-tools-$WG_TOOLS_VER" && tar -xf "$tarball" -C "$SRC"
@@ -46,7 +54,6 @@ if [[ ! -x "$OUT/wg" || ! -f "$OUT/wg-quick" || ! -f "$WG_PATCH_STAMP" ]]; then
         || { cat "$SRC/wg-build.log" >&2; exit 1; }
     install -m 0755 "$SRC/wireguard-tools-$WG_TOOLS_VER/src/wg" "$OUT/wg"
     install -m 0755 "$SRC/wireguard-tools-$WG_TOOLS_VER/src/wg-quick/darwin.bash" "$OUT/wg-quick"
-    touch "$WG_PATCH_STAMP"
 fi
 
 if [[ ! -x "$OUT/bash" ]]; then
@@ -74,4 +81,5 @@ exec "$(dirname "$0")/boringtun-cli" --disable-drop-privileges "$@"
 SHIM
 chmod 0755 "$OUT/wireguard-go"
 
+touch "$STAMP"
 echo "==> Tools ready in $OUT"

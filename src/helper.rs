@@ -113,6 +113,9 @@ pub fn install(tools: &Tools) -> Result<(), String> {
         }
     }
     sh += &format!("/bin/cp -f {} \"$B/wirest-helper\"; ", wg::shq(&exe.to_string_lossy()));
+    // Copies of a downloaded app carry its quarantine flag, which would stop
+    // launchd from running the helper.
+    sh += "/usr/bin/xattr -cr \"$H\"; ";
     sh += "/usr/sbin/chown -R root:wheel \"$H\"; /bin/chmod 755 \"$H\" \"$B\" \"$B\"/*; /bin/chmod 700 \"$H/tunnels\"; ";
     sh += &format!(
         "/usr/bin/printf '%s' {} > {PLIST}; /bin/chmod 644 {PLIST}; ",

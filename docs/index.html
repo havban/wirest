@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wirest — one-click WireGuard for Mac</title>
+<meta name="description" content="Wirest is a free, open-source WireGuard VPN app for macOS. Add your VPN once, then connect with one click from the window or the menu bar.">
+<link rel="icon" type="image/png" href="img/icon-256.png">
+<style>
+  :root {
+    --bg: #f7f8fb;
+    --surface: #ffffff;
+    --text: #0f172a;
+    --muted: #556070;
+    --line: #e3e7ee;
+    --accent: #0f9f75;
+    --accent-2: #0284c7;
+    --accent-ink: #ffffff;
+    --code-bg: #eef1f6;
+    --hero-from: #e9f8f3;
+    --hero-to: #e8f3fb;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a1020;
+      --surface: #111a2e;
+      --text: #e8edf5;
+      --muted: #9aa6b8;
+      --line: #22304a;
+      --accent: #34d399;
+      --accent-2: #38bdf8;
+      --accent-ink: #062018;
+      --code-bg: #18233b;
+      --hero-from: #0d1b2a;
+      --hero-to: #0b1630;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent-2); }
+  .wrap { max-width: 980px; margin: 0 auto; padding-inline: 20px; }
+  nav { display: flex; align-items: center; justify-content: space-between; padding-block: 18px; }
+  nav .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; color: var(--text); text-decoration: none; }
+  nav .brand img { width: 30px; height: 30px; }
+  nav .links { display: flex; gap: 20px; font-size: 15px; }
+  nav .links a { color: var(--muted); text-decoration: none; }
+  nav .links a:hover { color: var(--text); }
+
+  .hero { background: linear-gradient(135deg, var(--hero-from), var(--hero-to)); border-bottom: 1px solid var(--line); }
+  .hero .wrap > *, .two > *, .grid > * { min-width: 0; }
+  .hero .wrap { display: grid; grid-template-columns: 1.05fr 1fr; gap: 40px; align-items: center; padding-block: 56px 64px; }
+  .hero h1 { font-size: clamp(36px, 6vw, 56px); line-height: 1.05; letter-spacing: -0.02em; margin: 0 0 16px; }
+  .hero h1 span { background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero p.lead { font-size: 19px; color: var(--muted); margin: 0 0 28px; max-width: 34em; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 13px 22px; border-radius: 999px; font-weight: 600; text-decoration: none; font-size: 16px; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); }
+  .btn.primary:hover { filter: brightness(1.06); }
+  .btn.ghost { border: 1px solid var(--line); color: var(--text); background: var(--surface); }
+  .fine { font-size: 13px; color: var(--muted); margin-top: 12px; }
+
+  .window { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: 0 24px 60px rgba(10, 16, 32, 0.18); }
+  .window .bar { display: flex; gap: 7px; padding: 11px 13px; border-bottom: 1px solid var(--line); }
+  .window .bar i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; display: block; }
+  .window .bar i:nth-child(2) { background: #febc2e; }
+  .window .bar i:nth-child(3) { background: #28c840; }
+  .window img { display: block; width: 100%; height: auto; background: #f7f7f7; }
+
+  section { padding-block: 56px; border-bottom: 1px solid var(--line); }
+  section h2 { font-size: 30px; letter-spacing: -0.01em; margin: 0 0 8px; }
+  section .sub { color: var(--muted); margin: 0 0 28px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  ol.steps { list-style: none; padding: 0; margin: 0; counter-reset: s; display: grid; gap: 14px; }
+  ol.steps li { counter-increment: s; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px 18px 64px; position: relative; }
+  ol.steps li::before { content: counter(s); position: absolute; left: 20px; top: 17px; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-weight: 700; display: grid; place-items: center; font-size: 14px; }
+  ol.steps li strong { display: block; margin-bottom: 2px; }
+  ol.steps li span { color: var(--muted); font-size: 15px; }
+
+  .note { border-left: 3px solid var(--accent-2); background: var(--surface); border-radius: 0 12px 12px 0; padding: 14px 18px; margin-top: 18px; font-size: 15px; }
+  .note p { margin: 0 0 6px; }
+  code, pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 14px; }
+  code { background: var(--code-bg); padding: 2px 6px; border-radius: 6px; }
+  pre { background: var(--code-bg); padding: 14px 16px; border-radius: 12px; overflow-x: auto; margin: 10px 0 0; }
+  pre code { background: none; padding: 0; }
+
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+  details { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin-bottom: 10px; }
+  details summary { cursor: pointer; font-weight: 600; }
+  details p, details ul { color: var(--muted); font-size: 15px; margin: 10px 0 0; }
+
+  footer { padding-block: 32px 48px; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+
+  @media (max-width: 820px) {
+    .hero .wrap, .two, .grid { grid-template-columns: minmax(0, 1fr); }
+    nav .links { gap: 14px; }
+  }
+  @media (max-width: 480px) {
+    nav .links a.hide-sm { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap" style="padding-block: 0;">
+    <nav style="grid-column: 1 / -1;">
+      <a class="brand" href="#"><img src="img/icon-256.png" alt="">Wirest</a>
+      <div class="links">
+        <a href="#install">Install</a>
+        <a href="#use" class="hide-sm">How to use</a>
+        <a href="#how" class="hide-sm">How it works</a>
+        <a href="https://github.com/havban/wirest">GitHub</a>
+      </div>
+    </nav>
+  </div>
+  <div class="wrap">
+    <div>
+      <h1>WireGuard,<br><span>one click.</span></h1>
+      <p class="lead">Wirest is a free, open-source VPN app for Mac. Add your WireGuard VPN once, then connect with a single click — from the window or the menu bar. No terminal, no Homebrew.</p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/havban/wirest/releases/latest/download/Wirest-macOS-arm64.dmg">Download for Mac</a>
+        <a class="btn ghost" href="https://github.com/havban/wirest">View source</a>
+      </div>
+      <p class="fine">Apple Silicon (M1 or newer) · macOS 11 or later · Free and open source</p>
+    </div>
+    <div class="window" aria-label="Wirest app window">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <img src="img/app-disconnected.png" alt="Wirest window showing a VPN called office, Not connected, and a green Connect button" width="620" height="440">
+    </div>
+  </div>
+</header>
+
+<main>
+  <section>
+    <div class="wrap">
+      <h2>Simple on the outside</h2>
+      <p class="sub">Everything technical stays out of the way until you ask for it.</p>
+      <div class="grid">
+        <div class="card"><h3>One button</h3><p>Connect and Disconnect. Wirest tells you in plain words when you're connected, and when the server isn't answering.</p></div>
+        <div class="card"><h3>Lives in your menu bar</h3><p>Connect from the menu bar like Tailscale. Closing the window keeps Wirest running.</p></div>
+        <div class="card"><h3>Password once</h3><p>The first connect asks for your Mac password to install a small helper. After that, no more prompts.</p></div>
+        <div class="card"><h3>Add a VPN in seconds</h3><p>Drag in the <code>.conf</code> file from your VPN provider, pick it from Finder, or paste the text.</p></div>
+        <div class="card"><h3>Everything included</h3><p>WireGuard tools and BoringTun (Cloudflare's WireGuard in Rust) are built in. Nothing else to install.</p></div>
+        <div class="card"><h3>Advanced when you need it</h3><p>Switch on Advanced for every detail: keys, peers, live traffic, an editor with validation, and logs.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <h2>Install</h2>
+      <p class="sub">About a minute, once.</p>
+      <ol class="steps">
+        <li><strong>Download Wirest</strong><span>Get <a href="https://github.com/havban/wirest/releases/latest/download/Wirest-macOS-arm64.dmg">Wirest-macOS-arm64.dmg</a> and open it.</span></li>
+        <li><strong>Drag Wirest into Applications</strong><span>Then open it from your Applications folder.</span></li>
+        <li><strong>Allow it the first time</strong><span>macOS will say it can't verify the developer. Click <em>Done</em>, then open <em>System Settings → Privacy &amp; Security</em>, scroll down and click <em>Open Anyway</em> next to Wirest. You only do this once.</span></li>
+      </ol>
+      <div class="note">
+        <p><strong>Why the warning?</strong> Wirest isn't notarized by Apple yet (that needs a paid Apple developer account). The app is built from the public source code on GitHub. If you prefer the terminal, this does the same as <em>Open Anyway</em>:</p>
+        <pre><code>xattr -dr com.apple.quarantine /Applications/Wirest.app</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section id="use">
+    <div class="wrap two">
+      <div>
+        <h2>How to use</h2>
+        <p class="sub">You need a WireGuard config from whoever runs your VPN — a VPN provider, your company, or your own server. It's a small text file ending in <code>.conf</code>.</p>
+        <ol class="steps">
+          <li><strong>Add your VPN</strong><span>Drop the <code>.conf</code> file onto the Wirest window, or click <em>Import file…</em> or <em>Paste config…</em>.</span></li>
+          <li><strong>Click Connect</strong><span>The first time, enter your Mac password so Wirest can install its helper.</span></li>
+          <li><strong>That's it</strong><span>Next time, just click Connect — in the window or in the menu bar.</span></li>
+        </ol>
+      </div>
+      <div class="window" aria-label="Wirest waiting for the server">
+        <div class="bar"><i></i><i></i><i></i></div>
+        <img src="img/app-waiting.png" alt="Wirest showing Waiting for server, explaining there is no reply from the server yet" width="620" height="440">
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <h2>How it works</h2>
+      <p class="sub">For the curious, and for anyone deciding whether to trust it.</p>
+      <div class="grid">
+        <div class="card"><h3>The helper</h3><p>Changing network settings needs administrator rights. Like Tailscale, Wirest installs a small background helper once (with your password). The app then asks the helper to connect or disconnect.</p></div>
+        <div class="card"><h3>Locked down</h3><p>The helper only accepts WireGuard configs and refuses ones that contain scripts (<code>PostUp</code> and friends), so it can't be used to run commands. It uses its own protected copy of the tools.</p></div>
+        <div class="card"><h3>Your keys stay yours</h3><p>Configs are stored only on your Mac, readable only by you. Wirest has no account, no server and no tracking.</p></div>
+      </div>
+      <div class="note">
+        <p>Under the hood: the app is written in Rust with <a href="https://github.com/emilk/egui">egui</a>. Tunnels are brought up by <code>wg-quick</code> from <a href="https://www.wireguard.com/">WireGuard</a>'s tools, with <a href="https://github.com/cloudflare/boringtun">BoringTun</a> as the WireGuard implementation. All are built from source and bundled in the app.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="wrap">
+      <h2>Questions</h2>
+      <p class="sub">&nbsp;</p>
+      <details><summary>It says “Waiting for server…”</summary><p>Wirest has set up the tunnel, but the VPN server hasn't answered yet. Check your internet connection. If it stays that way, the server may be down or your config may be out of date — ask whoever runs the VPN.</p></details>
+      <details><summary>My config doesn't show up on the main screen</summary><p>Wirest only shows configs that are complete. Switch on <em>Advanced</em> (top right) to see every config and what's missing. Configs with <code>PostUp</code>/<code>PreUp</code> scripts aren't supported; remove those lines in <em>Advanced → Edit</em>.</p></details>
+      <details><summary>Can I connect to two VPNs at once?</summary><p>No — like most VPN apps, Wirest keeps one connection at a time. Connecting to another VPN switches over.</p></details>
+      <details><summary>How do I quit Wirest?</summary><p>Closing the window keeps Wirest in the menu bar. Choose <em>Quit Wirest</em> from the menu-bar icon, or press ⌘Q. Your VPN stays connected until you disconnect.</p></details>
+      <details><summary>How do I uninstall it?</summary>
+        <p>Switch on <em>Advanced</em> and click <em>Remove helper…</em>, then drag Wirest from Applications to the Trash. Your configs are in <code>~/Library/Application Support/Wirest</code> if you want to remove those too.</p></details>
+      <details><summary>Does it work on Intel Macs?</summary><p>Not yet; the download is for Apple Silicon. You can build it yourself from source on any Mac.</p></details>
+      <details><summary>Build it from source</summary>
+        <p>You need Xcode Command Line Tools. Everything else is installed automatically:</p>
+        <pre><code>git clone https://github.com/havban/wirest
+cd wirest
+./run.sh</code></pre>
+      </details>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Wirest · <a href="https://github.com/havban/wirest">github.com/havban/wirest</a></span>
+    <span>“WireGuard” is a registered trademark of Jason A. Donenfeld. Wirest is not affiliated with the WireGuard project.</span>
+  </div>
+</footer>
+
+</body>
+</html>

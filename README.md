@@ -6,7 +6,11 @@ A one-click WireGuard VPN app for macOS, written in Rust ([egui/eframe](https://
 Add your VPN once, then connect from the window or the menu bar. Everything it needs is built from
 source and bundled inside `Wirest.app` — no Homebrew, no Go.
 
-## Quick start
+**[Download for Mac](https://github.com/havban/wirest/releases/latest/download/Wirest-macOS-arm64.dmg)** ·
+[Website & user guide](https://havban.github.io/wirest/) ·
+[Developer guide](docs/DEVELOPMENT.md)
+
+## Build from source
 
 ```sh
 ./run.sh            # installs what's missing, builds dist/Wirest.app and opens it

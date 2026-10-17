@@ -654,11 +654,19 @@ fn centered_row(ui: &mut egui::Ui, width: f32, add: impl FnOnce(&mut egui::Ui)) 
     });
 }
 
+fn last_handshake(s: &IfaceStats) -> u64 {
+    s.peers.iter().map(|p| p.latest_handshake).max().unwrap_or(0)
+}
+
 fn traffic_summary(s: &IfaceStats) -> String {
     let rx: u64 = s.peers.iter().map(|p| p.rx).sum();
     let tx: u64 = s.peers.iter().map(|p| p.tx).sum();
-    let hs = s.peers.iter().map(|p| p.latest_handshake).max().unwrap_or(0);
-    format!("{} received · {} sent · handshake {}", human_bytes(rx), human_bytes(tx), ago(hs))
+    format!(
+        "{} received · {} sent · last handshake {}",
+        human_bytes(rx),
+        human_bytes(tx),
+        ago(last_handshake(s))
+    )
 }
 
 impl App {
@@ -704,11 +712,14 @@ impl App {
                 .unwrap_or_else(|| ready[0].clone());
             let Some(t) = self.find(&name) else { return };
             let up = self.is_up(&t.name);
+            // The interface is up, but nothing's working until the server answers.
+            let answered = self.active_for(&t.name).is_some_and(|a| last_handshake(&a.stats) > 0);
             let busy = self.busy.clone();
             let (headline, color) = match &busy {
                 Some((_, true)) => ("Connecting…", ORANGE),
                 Some((_, false)) => ("Disconnecting…", ORANGE),
-                None if up => ("Connected", GREEN),
+                None if up && answered => ("Connected", GREEN),
+                None if up => ("Waiting for server…", ORANGE),
                 None => ("Not connected", GRAY),
             };
             ui.label(RichText::new(headline).size(28.0).strong().color(color));
@@ -730,7 +741,12 @@ impl App {
             ui.add_space(10.0);
 
             if let Some(a) = self.active_for(&t.name) {
-                ui.label(RichText::new(traffic_summary(&a.stats)).color(GRAY).small());
+                let line = if answered {
+                    traffic_summary(&a.stats)
+                } else {
+                    format!("No reply from {endpoint} yet. Check your internet connection, or ask whoever runs the VPN.")
+                };
+                ui.label(RichText::new(line).color(GRAY).small());
             } else if self.helper == HelperState::Missing && busy.is_none() {
                 ui.label(
                     RichText::new("The first time, macOS asks for your password to install Wirest's helper.")
