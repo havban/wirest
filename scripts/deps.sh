@@ -31,18 +31,35 @@ if [[ ! -f "$STAMP" ]]; then
 fi
 mkdir -p "$SRC" "$OUT"
 
-fetch() { # url sha256 dest
-    if [[ ! -f "$3" ]] || ! echo "$2  $3" | shasum -a 256 -c - >/dev/null 2>&1; then
-        echo "==> Downloading $1"
-        curl -fsSL "$1" -o "$3.part"
-        echo "$2  $3.part" | shasum -a 256 -c - >/dev/null || { echo "Checksum mismatch for $1" >&2; rm -f "$3.part"; exit 1; }
-        mv "$3.part" "$3"
+# Exact copies of the upstream source tarballs, kept on our own release (also
+# serves as the GPL source offer). Used when the upstream servers are down or slow;
+# the sha256 check makes the source irrelevant.
+SOURCE_MIRROR=https://github.com/havban/wirest/releases/download/v0.1.0
+
+fetch() { # sha256 dest url...
+    local sha="$1" dest="$2"; shift 2
+    if [[ -f "$dest" ]] && echo "$sha  $dest" | shasum -a 256 -c - >/dev/null 2>&1; then
+        return
     fi
+    for url in "$@" "$SOURCE_MIRROR/$(basename "$dest")"; do
+        echo "==> Downloading $url"
+        # Give up on a server that's slower than 50 KB/s for 20 s and try the next.
+        if curl -fsSL --connect-timeout 15 --speed-limit 50000 --speed-time 20 "$url" -o "$dest.part" \
+            && echo "$sha  $dest.part" | shasum -a 256 -c - >/dev/null 2>&1; then
+            mv "$dest.part" "$dest"
+            return
+        fi
+        echo "    failed or too slow, trying next source" >&2
+        rm -f "$dest.part"
+    done
+    echo "Could not download $(basename "$dest") from any source" >&2
+    exit 1
 }
 
 if [[ ! -x "$OUT/wg" || ! -f "$OUT/wg-quick" ]]; then
     tarball="$SRC/wireguard-tools-$WG_TOOLS_VER.tar.xz"
-    fetch "https://git.zx2c4.com/wireguard-tools/snapshot/wireguard-tools-$WG_TOOLS_VER.tar.xz" "$WG_TOOLS_SHA" "$tarball"
+    fetch "$WG_TOOLS_SHA" "$tarball" \
+        "https://git.zx2c4.com/wireguard-tools/snapshot/wireguard-tools-$WG_TOOLS_VER.tar.xz"
     rm -rf "$SRC/wireguard-tools-$WG_TOOLS_VER" && tar -xf "$tarball" -C "$SRC"
     # `wg setconf` always sends fwmark=0, which BoringTun rejects with EINVAL
     # on macOS (fwmark is Linux-only). Don't send it.
@@ -58,7 +75,9 @@ fi
 
 if [[ ! -x "$OUT/bash" ]]; then
     tarball="$SRC/bash-$BASH_VER.tar.gz"
-    fetch "https://ftp.gnu.org/gnu/bash/bash-$BASH_VER.tar.gz" "$BASH_SHA" "$tarball"
+    fetch "$BASH_SHA" "$tarball" \
+        "https://ftp.gnu.org/gnu/bash/bash-$BASH_VER.tar.gz" \
+        "https://mirrors.kernel.org/gnu/bash/bash-$BASH_VER.tar.gz"
     rm -rf "$SRC/bash-$BASH_VER" && tar -xf "$tarball" -C "$SRC"
     echo "==> Building bash $BASH_VER (takes a minute)"
     (cd "$SRC/bash-$BASH_VER" && ./configure --without-bash-malloc --disable-nls && make -j"$JOBS") \

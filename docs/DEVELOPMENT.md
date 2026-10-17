@@ -9,6 +9,25 @@ you change behaviour.
 - Releases: https://github.com/havban/wirest/releases (assets built by `scripts/release.sh`)
 - Former name: **Wirus** (renamed 2026-10-17; the GitHub repo was renamed too)
 
+## Current state (update this when you stop working)
+
+As of 2026-10-17:
+
+- **v0.1.0 released** (dmg/zip/SHA256SUMS + the bash and wireguard-tools source tarballs, which
+  `scripts/deps.sh` also uses as a download fallback). Docs site live from `main:/docs`
+  (Pages "legacy" build from a branch, no Actions workflow).
+- **Verified:** unit tests; helper install from the release build; tunnel up/down through the
+  helper (interface, routes, BoringTun cleanup); failed-up cleanup; hook/name rejection; app
+  screens via screenshots; release download checksum; building from a fresh clone.
+- **Not verified yet:** a real WireGuard server end to end (handshake, traffic, DNS); the
+  menu-bar icon visually and its menu actions (no click automation here); install on another Mac
+  / older macOS; the first-run Gatekeeper flow on a downloaded copy.
+- **This Mac:** the Wirest helper from the v0.1.0 build is installed. User tunnels dir has
+  `wg.conf`, an unfinished `+ New` template (hidden from the simple view).
+- **Product decision:** configs are imported from files (no server/provider integration) — see
+  *Product* below. Next likely asks: real-server testing, start at login, Intel/universal build,
+  notarization.
+
 ## Product
 
 A one-click WireGuard VPN client for macOS, in the spirit of Tailscale's Mac app:
