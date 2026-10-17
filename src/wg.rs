@@ -1,62 +1,67 @@
-//! Talks to wireguard-tools (`wg`, `wg-quick`), elevating via macOS's admin
-//! prompt or, when the user opted in, a NOPASSWD sudoers rule.
+//! Locates and runs wireguard-tools (`wg`, `wg-quick`). The run functions
+//! need root; they are called by the helper daemon.
 
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-/// GUI apps get a minimal PATH; the tools' own directory is prepended to this.
-const PATH_ENV: &str = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
-const SUDOERS_FILE: &str = "/etc/sudoers.d/wirus";
+/// System directories appended after the tools' own directory in PATH.
+const PATH_ENV: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
+
+/// Everything wg-quick needs, copied into the helper's root-owned bin dir.
+pub const TOOL_FILES: [&str; 5] = ["wg", "wg-quick", "bash", "wireguard-go", "boringtun-cli"];
 
 #[derive(Clone)]
 pub struct Tools {
     pub dir: PathBuf,
     pub wg: PathBuf,
     pub wg_quick: PathBuf,
-    /// wg-quick needs bash >= 4; it is always run through this one so a
-    /// reset PATH under sudo can't pick macOS's bash 3.2.
+    /// wg-quick needs bash >= 4; it is always run through this one rather
+    /// than macOS's bash 3.2.
     pub bash: PathBuf,
-    pub bundled: bool,
 }
 
-/// Candidate tool directories, most preferred first: inside the .app
-/// bundle, the dev build from scripts/deps.sh, then Homebrew.
-fn tool_dirs() -> Vec<(PathBuf, bool)> {
-    let mut dirs = Vec::new();
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(contents) = exe.parent().and_then(Path::parent) {
-            dirs.push((contents.join("Resources/bin"), true));
-        }
-    }
-    if cfg!(debug_assertions) {
-        dirs.push((Path::new(env!("CARGO_MANIFEST_DIR")).join(".deps/out/bin"), true));
-    }
-    for d in ["/opt/homebrew/bin", "/usr/local/bin"] {
-        dirs.push((PathBuf::from(d), false));
-    }
-    dirs
-}
-
-pub fn find_tools() -> Option<Tools> {
-    tool_dirs().into_iter().find_map(|(dir, bundled)| {
-        let t = Tools {
+impl Tools {
+    pub fn in_dir(dir: PathBuf) -> Self {
+        Self {
             wg: dir.join("wg"),
             wg_quick: dir.join("wg-quick"),
             bash: dir.join("bash"),
             dir,
-            bundled,
-        };
-        (t.wg.exists() && t.wg_quick.exists() && t.bash.exists()).then_some(t)
-    })
-}
+        }
+    }
 
-impl Tools {
+    fn exists(&self) -> bool {
+        self.wg.exists() && self.wg_quick.exists() && self.bash.exists()
+    }
+
     fn path_env(&self) -> String {
         format!("{}:{PATH_ENV}", self.dir.display())
     }
 }
 
-#[derive(Clone)]
+/// Candidate tool directories, most preferred first: inside the .app
+/// bundle, the dev build from scripts/deps.sh, then Homebrew.
+fn tool_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(contents) = exe.parent().and_then(Path::parent) {
+            dirs.push(contents.join("Resources/bin"));
+        }
+    }
+    if cfg!(debug_assertions) {
+        dirs.push(Path::new(env!("CARGO_MANIFEST_DIR")).join(".deps/out/bin"));
+    }
+    dirs.extend(["/opt/homebrew/bin", "/usr/local/bin"].map(PathBuf::from));
+    dirs
+}
+
+/// Tools the app can hand to the helper installer.
+pub fn find_tools() -> Option<Tools> {
+    tool_dirs().into_iter().map(Tools::in_dir).find(Tools::exists)
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PeerStats {
     pub public_key: String,
     pub endpoint: String,
@@ -65,7 +70,7 @@ pub struct PeerStats {
     pub tx: u64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct IfaceStats {
     pub iface: String,
     pub public_key: String,
@@ -87,7 +92,7 @@ fn run(cmd: &mut Command) -> Result<String, String> {
     }
 }
 
-fn shq(s: &str) -> String {
+pub fn shq(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 
@@ -96,94 +101,34 @@ fn applescript_escape(s: &str) -> String {
 }
 
 /// Runs a shell snippet as root behind the standard macOS password prompt.
-fn as_admin(sh: &str, prompt: &str) -> Result<String, String> {
+pub fn as_admin(sh: &str, prompt: &str) -> Result<String, String> {
     let script = format!(
         "do shell script \"{}\" with prompt \"{}\" with administrator privileges",
         applescript_escape(sh),
         applescript_escape(prompt)
     );
-    run(Command::new("/usr/bin/osascript").arg("-e").arg(script))
+    run(Command::new("/usr/bin/osascript").arg("-e").arg(script)).map_err(|e| {
+        if e.contains("-128") {
+            "Cancelled".into()
+        } else {
+            e
+        }
+    })
 }
 
-/// `sudo -l` only says whether a command is permitted at all (any admin
-/// is), so probe by running harmless commands without a password instead.
-fn sudo_runs(cmd: &[&Path]) -> bool {
-    Command::new("/usr/bin/sudo")
-        .arg("-n")
-        .args(cmd)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
+/// `wg-quick up|down <conf>`; must run as root.
+pub fn quick(t: &Tools, verb: &str, conf: &Path) -> Result<String, String> {
+    run(Command::new(&t.bash)
+        .arg(&t.wg_quick)
+        .arg(verb)
+        .arg(conf)
+        .env("PATH", t.path_env()))
 }
 
-/// True when both tools can be run as root without a password prompt.
-pub fn sudo_allowed(t: &Tools) -> bool {
-    sudo_runs(&[&t.bash, &t.wg_quick, Path::new("--help")])
-        && sudo_runs(&[&t.wg, Path::new("show"), Path::new("all"), Path::new("dump")])
-}
-
-pub fn sudoers_installed() -> bool {
-    Path::new(SUDOERS_FILE).exists()
-}
-
-/// `wg-quick up|down <conf>`.
-pub fn quick(t: &Tools, sudo_ok: bool, verb: &str, conf: &Path) -> Result<String, String> {
-    if sudo_ok {
-        return run(Command::new("/usr/bin/sudo")
-            .arg("-n")
-            .arg(&t.bash)
-            .arg(&t.wg_quick)
-            .arg(verb)
-            .arg(conf)
-            .env("PATH", t.path_env()));
-    }
-    let sh = format!(
-        "export PATH={}; {} {} {verb} {} 2>&1",
-        shq(&t.path_env()),
-        shq(&t.bash.to_string_lossy()),
-        shq(&t.wg_quick.to_string_lossy()),
-        shq(&conf.to_string_lossy())
-    );
-    as_admin(&sh, &format!("Wirus wants to bring a WireGuard tunnel {verb}."))
-}
-
-pub fn install_sudoers(t: &Tools) -> Result<String, String> {
-    let user = std::env::var("USER").unwrap_or_default();
-    if user.is_empty() || !user.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) {
-        return Err(format!("unsupported user name {user:?}"));
-    }
-    // sudoers needs spaces in paths escaped.
-    let esc = |p: &Path| p.display().to_string().replace(' ', "\\ ");
-    let rule = format!(
-        "{user} ALL=(root) NOPASSWD: {} {} *, {} show *",
-        esc(&t.bash),
-        esc(&t.wg_quick),
-        esc(&t.wg)
-    );
-    let sh = format!(
-        "f=$(/usr/bin/mktemp) && printf '%s\\n' {} > \"$f\" && /usr/sbin/visudo -cf \"$f\" >/dev/null \
-         && /usr/bin/install -m 0440 -o root -g wheel \"$f\" {SUDOERS_FILE}; r=$?; /bin/rm -f \"$f\"; exit $r",
-        shq(&rule)
-    );
-    as_admin(&sh, "Wirus wants to allow connecting WireGuard tunnels without a password.")
-}
-
-pub fn remove_sudoers() -> Result<String, String> {
-    as_admin(
-        &format!("/bin/rm -f {SUDOERS_FILE}"),
-        "Wirus wants to remove its passwordless sudo rule.",
-    )
-}
-
-/// Parses `wg show all dump`: interface lines have 5 tab-separated fields,
-/// peer lines have 9.
+/// Parses `wg show all dump` (root only): interface lines have 5
+/// tab-separated fields, peer lines have 9.
 pub fn show_dump(t: &Tools) -> Result<Vec<IfaceStats>, String> {
-    let out = run(Command::new("/usr/bin/sudo")
-        .arg("-n")
-        .arg(&t.wg)
-        .args(["show", "all", "dump"]))?;
+    let out = run(Command::new(&t.wg).args(["show", "all", "dump"]))?;
     let mut ifaces: Vec<IfaceStats> = Vec::new();
     for line in out.lines() {
         let f: Vec<&str> = line.split('\t').collect();
@@ -208,12 +153,4 @@ pub fn show_dump(t: &Tools) -> Result<Vec<IfaceStats>, String> {
         }
     }
     Ok(ifaces)
-}
-
-/// Best effort status check when stats aren't available: wg-quick records
-/// the utun mapping here, though the directory is usually root-only.
-pub fn runtime_marker_exists(name: &str) -> bool {
-    Path::new("/var/run/wireguard")
-        .join(format!("{name}.name"))
-        .exists()
 }

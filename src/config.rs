@@ -91,8 +91,12 @@ pub fn parse(text: &str) -> Parsed {
                     "dns" => iface.dns.extend(split_list(&value)),
                     "listenport" => iface.listen_port = Some(value),
                     "mtu" => iface.mtu = Some(value),
-                    "table" | "fwmark" | "saveconfig" | "preup" | "postup" | "predown"
-                    | "postdown" => {}
+                    "table" | "fwmark" | "saveconfig" => {}
+                    // The helper runs wg-quick as root; hooks would let any
+                    // local process run commands as root through it.
+                    "preup" | "postup" | "predown" | "postdown" => p.errors.push(format!(
+                        "Line {ln}: script hooks ({key}) aren't supported by Wirest"
+                    )),
                     _ => p.errors.push(format!("Line {ln}: unknown [Interface] key `{key}`")),
                 }
             }
@@ -230,7 +234,7 @@ pub fn sanitize_name(raw: &str) -> String {
 pub fn tunnels_dir() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("Wirus")
+        .join("Wirest")
         .join("tunnels")
 }
 

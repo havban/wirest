@@ -1,7 +1,7 @@
 #!/bin/bash
-# One-shot setup: installs anything missing, builds Wirus with its bundled
+# One-shot setup: installs anything missing, builds Wirest with its bundled
 # WireGuard tools, and launches it. Safe to re-run; finished steps are cached.
-#   ./run.sh            build and open dist/Wirus.app
+#   ./run.sh            build and open dist/Wirest.app
 #   ./run.sh --install  also copy it to /Applications
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -28,12 +28,12 @@ fi
 
 ./bundle.sh
 
-APP=dist/Wirus.app
+APP=dist/Wirest.app
 if [[ "${1:-}" == "--install" ]]; then
     echo "==> Installing to /Applications"
-    rm -rf /Applications/Wirus.app
+    rm -rf /Applications/Wirest.app
     cp -R "$APP" /Applications/
-    APP=/Applications/Wirus.app
+    APP=/Applications/Wirest.app
 fi
 echo "==> Launching $APP"
 open "$APP"

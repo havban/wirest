@@ -1,13 +1,15 @@
-# Wirus
+# Wirest
 
-A small native macOS GUI for WireGuard, written in Rust ([egui/eframe](https://github.com/emilk/egui)).
-It manages tunnel configs and drives `wg-quick` / `wg`. Everything it needs is built from source and
-bundled inside `Wirus.app` — no Homebrew, no Go.
+<p align="center"><img src="assets/icon-256.png" width="128" alt="Wirest icon"></p>
+
+A one-click WireGuard VPN app for macOS, written in Rust ([egui/eframe](https://github.com/emilk/egui)).
+Add your VPN once, then connect from the window or the menu bar. Everything it needs is built from
+source and bundled inside `Wirest.app` — no Homebrew, no Go.
 
 ## Quick start
 
 ```sh
-./run.sh            # installs what's missing, builds dist/Wirus.app and opens it
+./run.sh            # installs what's missing, builds dist/Wirest.app and opens it
 ./run.sh --install  # same, and copies it to /Applications
 ```
 
@@ -17,19 +19,18 @@ a couple of minutes; later runs reuse the cache in `.deps/`.
 
 ## Features
 
-- Tunnel list with live status
-- Activate / deactivate tunnels (`wg-quick up|down`)
-- Create tunnels with a freshly generated key pair (Curve25519, same as `wg genkey`)
-- Import `.conf` files via file picker or drag & drop
-- Built-in editor with validation (bad keys, unknown fields, missing sections)
-- Overview of interface and peers: public key (copyable), addresses, DNS, endpoints, allowed IPs
-- Live stats per peer — latest handshake and rx/tx — when passwordless control is enabled
-- Log panel with `wg-quick` output
+- One big **Connect** button; the full config details live behind **Advanced**
+- Menu-bar icon with Connect / Disconnect, like Tailscale; closing the window keeps Wirest running
+- No password prompts after the first connect (see *How it works*)
+- Add a VPN by dropping in a `.conf` file, picking one, or pasting the text
+- One VPN at a time: connecting to another switches over
+- Live status: handshake and data received / sent
+- Advanced view: tunnel list, editor with validation, key generation, log
 
 ## Bundled tools
 
 `scripts/deps.sh` downloads pinned, checksum-verified sources and builds into `.deps/out/bin`,
-which `bundle.sh` copies to `Wirus.app/Contents/Resources/bin`:
+which `bundle.sh` copies to `Wirest.app/Contents/Resources/bin`:
 
 | Tool | Source | Why |
 | --- | --- | --- |
@@ -38,35 +39,35 @@ which `bundle.sh` copies to `Wirus.app/Contents/Resources/bin`:
 | `bash` | GNU bash 5.3 | `wg-quick` needs bash ≥ 4; macOS ships 3.2 |
 
 `wg-quick` launches `wireguard-go` from its own directory; a two-line shim with that name starts
-`boringtun-cli --disable-drop-privileges` instead. If no bundled tools are found, Wirus falls back to
+`boringtun-cli --disable-drop-privileges` instead. If no bundled tools are found, Wirest falls back to
 a Homebrew `wireguard-tools` install.
 
-Note: bash and wireguard-tools are GPL; if you redistribute `Wirus.app`, include their sources.
+Note: bash and wireguard-tools are GPL; if you redistribute `Wirest.app`, include their sources.
 
 ## How it works
 
-Configs live in `~/Library/Application Support/Wirus/tunnels/<name>.conf` (dir `0700`, files `0600`).
-The file name is the tunnel name, so it must be a valid interface name (1–15 chars, `[A-Za-z0-9_=+.-]`).
+Your configs live in `~/Library/Application Support/Wirest/tunnels/<name>.conf` (dir `0700`,
+files `0600`). The file name is the tunnel name, so it must be a valid interface name
+(1–15 chars, `[A-Za-z0-9_=+.-]`).
 
-Bringing tunnels up/down needs root. By default Wirus asks through the standard macOS admin
-password prompt each time.
+Bringing a tunnel up needs root. Like Tailscale's system extension, Wirest installs a small
+**helper** the first time you connect — that is the only password prompt:
 
-**Passwordless control** (button in the toolbar) installs `/etc/sudoers.d/wirus` allowing your
-user to run the bundled `wg-quick` (via the bundled bash) and `wg show` via `sudo` without a password. This removes the prompt and lets Wirus
-poll `wg show all dump` for live handshake/transfer stats. You can revoke it from the toolbar.
-
-> ⚠️ `wg-quick` executes `PreUp`/`PostUp`/`PreDown`/`PostDown` commands from config files as root.
-> With the sudoers rule in place, anything that can write your configs can run commands as root.
-> Only enable it on a machine you trust.
+- The helper is the Wirest binary itself, run as a root LaunchDaemon
+  (`com.github.havban.wirest.helper`), with its own root-owned copy of the tools in
+  `/Library/Application Support/Wirest/bin`.
+- The app talks to it over `/var/run/wirest.sock` (owner `root:staff`, mode `0660`), sending the
+  config to connect. The helper refuses configs with `PreUp`/`PostUp`/`PreDown`/`PostDown`
+  scripts, since those would run as root.
+- The helper is reinstalled automatically when the app is updated. Remove it from
+  **Advanced → Remove helper…**, or `Wirest.app/Contents/MacOS/wirest --uninstall-helper`.
 
 ## Troubleshooting
 
 - **"WireGuard tools not found"** — run `./run.sh` (or `./scripts/deps.sh`) and relaunch.
-- **Moved the app after enabling passwordless control?** The sudoers rule names the tool paths; click
-  *Revoke* and enable it again.
-- BoringTun logs to `/tmp/boringtun.out`.
-- Status shows inactive for a tunnel started outside Wirus — without passwordless control the app
-  can only track tunnels it started itself.
+- Helper log: `/var/log/wirest-helper.log`. BoringTun log: `/tmp/boringtun.out`.
+- Reinstall the helper from a terminal: `Wirest.app/Contents/MacOS/wirest --install-helper`.
+- Script hooks (`PostUp` etc.) in a config aren't supported; remove them in **Advanced → Edit**.
 
 ## Tests
 

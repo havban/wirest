@@ -12,4 +12,8 @@ done
 iconutil -c icns "$SET" -o AppIcon.icns
 "$TMP/render" icon.svg icon-1024.png 1024
 "$TMP/render" icon.svg icon-256.png 256
-echo "==> Wrote assets/AppIcon.icns, icon-1024.png, icon-256.png"
+# Menu-bar template images (black + alpha); "off" is the same mark dimmed.
+sed 's/<g opacity="1">/<g opacity="0.4">/' tray.svg > "$TMP/tray-off.svg"
+"$TMP/render" tray.svg tray-on.png 44 36
+"$TMP/render" "$TMP/tray-off.svg" tray-off.png 44 36
+echo "==> Wrote assets/AppIcon.icns, icon-1024.png, icon-256.png, tray-*.png"

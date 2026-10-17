@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds the runtime tools Wirus bundles into .deps/out/bin, without Homebrew or Go:
+# Builds the runtime tools Wirest bundles into .deps/out/bin, without Homebrew or Go:
 #   wg            - wireguard-tools (C, built with Xcode command line tools)
 #   wg-quick      - wireguard-tools' darwin script
 #   bash          - GNU bash 5 (wg-quick needs bash >= 4; macOS ships 3.2)
@@ -30,15 +30,23 @@ fetch() { # url sha256 dest
     fi
 }
 
-if [[ ! -x "$OUT/wg" || ! -f "$OUT/wg-quick" ]]; then
+# Bump when the wg patch below changes, to force a rebuild.
+WG_PATCH_STAMP="$OUT/.wg-patch-1"
+if [[ ! -x "$OUT/wg" || ! -f "$OUT/wg-quick" || ! -f "$WG_PATCH_STAMP" ]]; then
     tarball="$SRC/wireguard-tools-$WG_TOOLS_VER.tar.xz"
     fetch "https://git.zx2c4.com/wireguard-tools/snapshot/wireguard-tools-$WG_TOOLS_VER.tar.xz" "$WG_TOOLS_SHA" "$tarball"
     rm -rf "$SRC/wireguard-tools-$WG_TOOLS_VER" && tar -xf "$tarball" -C "$SRC"
+    # `wg setconf` always sends fwmark=0, which BoringTun rejects with EINVAL
+    # on macOS (fwmark is Linux-only). Don't send it.
+    conf_c="$SRC/wireguard-tools-$WG_TOOLS_VER/src/config.c"
+    sed -i '' 's/WGDEVICE_HAS_PRIVATE_KEY | WGDEVICE_HAS_FWMARK | WGDEVICE_HAS_LISTEN_PORT/WGDEVICE_HAS_PRIVATE_KEY | WGDEVICE_HAS_LISTEN_PORT/' "$conf_c"
+    grep -q 'WGDEVICE_HAS_PRIVATE_KEY | WGDEVICE_HAS_LISTEN_PORT;' "$conf_c" || { echo "wg fwmark patch did not apply" >&2; exit 1; }
     echo "==> Building wg"
     make -s -C "$SRC/wireguard-tools-$WG_TOOLS_VER/src" -j"$JOBS" wg 2>"$SRC/wg-build.log" \
         || { cat "$SRC/wg-build.log" >&2; exit 1; }
     install -m 0755 "$SRC/wireguard-tools-$WG_TOOLS_VER/src/wg" "$OUT/wg"
     install -m 0755 "$SRC/wireguard-tools-$WG_TOOLS_VER/src/wg-quick/darwin.bash" "$OUT/wg-quick"
+    touch "$WG_PATCH_STAMP"
 fi
 
 if [[ ! -x "$OUT/bash" ]]; then
