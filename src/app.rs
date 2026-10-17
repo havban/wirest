@@ -70,6 +70,7 @@ struct NewDialog {
 }
 
 pub struct App {
+    logo: egui::TextureHandle,
     dir: PathBuf,
     tunnels: Vec<Tunnel>,
     selected: Option<String>,
@@ -99,7 +100,18 @@ impl App {
         let dir = config::tunnels_dir();
         let (tx, rx) = channel();
         let tools = wg::find_tools();
+        let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon-256.png"))
+            .expect("bundled icon is a valid PNG");
+        let logo = cc.egui_ctx.load_texture(
+            "logo",
+            egui::ColorImage::from_rgba_unmultiplied(
+                [icon.width as usize, icon.height as usize],
+                &icon.rgba,
+            ),
+            egui::TextureOptions::LINEAR,
+        );
         let mut app = Self {
+            logo,
             dir,
             tunnels: Vec::new(),
             selected: None,
@@ -476,6 +488,10 @@ impl eframe::App for App {
         egui::TopBottomPanel::top("top").show(ctx, |ui| {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
+                ui.add(
+                    egui::Image::new(egui::load::SizedTexture::from_handle(&self.logo))
+                        .fit_to_exact_size(egui::vec2(30.0, 30.0)),
+                );
                 ui.heading("Wirus");
                 ui.label(RichText::new("WireGuard tunnels").color(GRAY));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
