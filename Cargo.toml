@@ -1,0 +1,17 @@
+[package]
+name = "wirus"
+version = "0.1.0"
+edition = "2021"
+description = "A small macOS GUI for managing WireGuard tunnels via wg-quick"
+
+[dependencies]
+eframe = "0.31"
+rfd = "0.15"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+getrandom = "0.2"
+base64 = "0.22"
+dirs = "5"
+
+[profile.release]
+strip = true
+lto = "thin"
