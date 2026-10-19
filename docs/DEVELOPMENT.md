@@ -13,21 +13,25 @@ you change behaviour.
 
 As of 2026-10-19:
 
-- **v0.1.0 released** (macOS app only: dmg/zip/SHA256SUMS + the bash and wireguard-tools source
-  tarballs, which `scripts/deps.sh` also uses as a download fallback). Docs site live from
-  `main:/docs` (Pages "legacy" build from a branch, no Actions workflow).
-- **v0.2.0 in progress (not released):** Cargo workspace (core/helper/gui/tui), the terminal UI +
-  CLI `wirest-tui` for macOS and Linux, a separate `wirest-helper` binary, systemd helper on
-  Linux, static Linux packages for aarch64 and x86_64.
-- **Verified for 0.2.0:** unit tests; `tests/linux-smoke.sh` passes in Debian 12 containers on
-  aarch64 and x86_64 (static binaries, root direct mode, helper as a normal user, SSH guard,
-  hook refusal, full cleanup); the interactive TUI driven through tmux in Alpine (launch, connect,
-  log, disconnect, paste window, 60-column layout, quit).
-- **Not verified yet:** a real WireGuard server end to end (handshake, traffic, DNS); kernel
-  WireGuard on Linux (Apple container's kernel lacks it, so only the BoringTun fallback ran); the
-  systemd install path (containers have no systemd); the macOS menu-bar icon visually; install on
-  another Mac / older macOS; the Gatekeeper first-run flow.
-- **This Mac:** see *Environment notes*. User tunnels dir has `wg.conf`, an unfinished template.
+- **v0.2.0 released** (latest): Mac app (dmg/zip) + `wirest-tui` packages for macOS aarch64 and
+  Linux aarch64/x86_64 + SHA256SUMS. v0.1.0 (Mac app only) also carries the bash and
+  wireguard-tools source tarballs that `scripts/deps.sh` uses as a download fallback. Docs site
+  live from `main:/docs` (Pages "legacy" branch build, no Actions workflow) with a "Linux servers
+  & the terminal" section.
+- **Structure:** Cargo workspace — `crates/core` (shared), `crates/helper` (`wirest-helper`),
+  `crates/gui` (Mac app), `crates/tui` (`wirest-tui`). See *Layout*.
+- **Verified:** unit tests; `tests/linux-smoke.sh` on the release packages in Debian 12 (aarch64
+  and x86_64): static binaries, root direct mode, helper as a normal user, SSH guard, hook refusal,
+  full cleanup; the interactive TUI via tmux in Alpine (launch, connect, log, disconnect, paste,
+  60 columns, quit); the website's `curl … | install.sh` flow from GitHub in a fresh container;
+  on this Mac: new helper install, `wirest-tui` connect/disconnect through it, the Mac app
+  sharing that helper without a reinstall prompt.
+- **Not verified yet:** a real WireGuard server (handshake, traffic, DNS); kernel WireGuard on
+  Linux (Apple container's kernel lacks it — only the BoringTun fallback ran); the systemd
+  install path (containers have no systemd); the macOS menu-bar icon visually; install on
+  another Mac / older macOS; Gatekeeper first-run of the downloaded app or Mac TUI tarball.
+- **This Mac:** the v0.2.0 helper is installed (LaunchDaemon, socket `root:staff`). User tunnels
+  dir has `wg.conf`, an unfinished template. Apple `container` 1.5.0 installed and running.
 - **Product decisions:** configs are imported from files (no server/provider integration);
   simple one-button UIs; no visible config errors in the GUI's simple view.
 
