@@ -1,0 +1,8 @@
+[package]
+name = "wirest-helper"
+description = "Wirest's privileged helper daemon (runs as root)"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+wirest-core.workspace = true

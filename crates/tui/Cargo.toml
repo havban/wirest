@@ -1,0 +1,9 @@
+[package]
+name = "wirest-tui"
+description = "Terminal UI and CLI for Wirest, for macOS and Linux (works on headless servers)"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+wirest-core.workspace = true
+ratatui = "0.30.2"

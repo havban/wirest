@@ -3,13 +3,13 @@
 # scripts/deps.sh, in dist/Wirest.app.
 set -euo pipefail
 cd "$(dirname "$0")"
-./scripts/deps.sh
-cargo build --release
+TOOLS="$(./scripts/deps.sh | tee /dev/stderr | tail -1)"
+cargo build --release -p wirest -p wirest-helper
 APP=dist/Wirest.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/bin"
-cp target/release/wirest "$APP/Contents/MacOS/wirest"
-cp -p .deps/out/bin/* "$APP/Contents/Resources/bin/"
+cp target/release/wirest target/release/wirest-helper "$APP/Contents/MacOS/"
+cp -p "$TOOLS"/* "$APP/Contents/Resources/bin/"
 cp assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 cat > "$APP/Contents/Info.plist" <<PLIST

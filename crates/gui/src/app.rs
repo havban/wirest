@@ -1,12 +1,15 @@
-use crate::config::{self, Parsed};
-use crate::helper::{self, Active, Request};
 use crate::tray::Tray;
-use crate::wg::{self, IfaceStats, Tools};
+use wirest_core::config::{self, Parsed};
+use wirest_core::install::{self, Elevation, HelperStatus};
+use wirest_core::protocol::Active;
+use wirest_core::wg::{self, IfaceStats, Tools};
+use wirest_core::format::{ago, human_bytes, last_handshake, traffic_summary};
+use wirest_core::Backend;
 use eframe::egui::{self, Color32, RichText};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use tray_icon::menu::MenuEvent;
 
 const GREEN: Color32 = Color32::from_rgb(52, 199, 89);
@@ -139,7 +142,7 @@ impl App {
         let dir = config::tunnels_dir();
         let (tx, rx) = channel();
         let tools = wg::find_tools();
-        let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon-256.png"))
+        let icon = eframe::icon_data::from_png_bytes(include_bytes!("../../../assets/icon-256.png"))
             .expect("bundled icon is a valid PNG");
         let logo = cc.egui_ctx.load_texture(
             "logo",
@@ -316,7 +319,7 @@ impl App {
             Action::UninstallHelper => {
                 let tx = self.tx.clone();
                 std::thread::spawn(move || {
-                    let line = match helper::uninstall() {
+                    let line = match install::uninstall(Elevation::AdminDialog) {
                         Ok(()) => "Helper removed".to_string(),
                         Err(e) => format!("Removing helper failed: {}", e.trim()),
                     };
@@ -540,26 +543,26 @@ fn spawn_job(job: Job, tools: Option<Tools>, tx: Sender<Msg>, ctx: egui::Context
     tx.send(Msg::Busy(Some((name.clone(), connecting)))).ok();
     tx.send(Msg::Error(None)).ok();
     ctx.request_repaint();
+    // The GUI always goes through the helper, with the macOS password dialog.
+    let backend = Backend::Helper { tools, elevation: Elevation::AdminDialog };
     std::thread::spawn(move || {
         let result = (|| {
-            let current = helper::request(&Request::Version).is_ok_and(|r| r.build == helper::build_id());
-            if !current {
-                let tools = tools.ok_or_else(|| "WireGuard tools are missing from this build".to_string())?;
+            if backend.needs_helper_install() {
                 tx.send(Msg::Log("Installing the Wirest helper…".into())).ok();
-                helper::install(&tools)?;
+                backend.ensure_helper()?;
                 tx.send(Msg::Log("Helper installed".into())).ok();
             }
-            helper::request(&match job {
-                Job::Up { name, config } => Request::Up { name, config },
-                Job::Down { name } => Request::Down { name },
-            })
+            match job {
+                Job::Up { name, config } => backend.up(&name, &config),
+                Job::Down { name } => backend.down(&name),
+            }
         })();
         match result {
-            Ok(r) => {
-                for l in r.output.lines().filter(|l| !l.trim().is_empty()) {
+            Ok((output, active)) => {
+                for l in output.lines().filter(|l| !l.trim().is_empty()) {
                     tx.send(Msg::Log(format!("[{name}] {l}"))).ok();
                 }
-                tx.send(Msg::Status { helper: HelperState::Ready, active: r.active }).ok();
+                tx.send(Msg::Status { helper: HelperState::Ready, active }).ok();
             }
             Err(e) => {
                 let verb = if connecting { "connect" } else { "disconnect" };
@@ -575,12 +578,10 @@ fn spawn_job(job: Job, tools: Option<Tools>, tx: Sender<Msg>, ctx: egui::Context
 
 fn spawn_poller(tx: Sender<Msg>, ctx: egui::Context) {
     std::thread::spawn(move || loop {
-        let msg = match helper::request(&Request::Version) {
-            Ok(r) => Msg::Status {
-                helper: if r.build == helper::build_id() { HelperState::Ready } else { HelperState::Stale },
-                active: r.active,
-            },
-            Err(_) => Msg::Status { helper: HelperState::Missing, active: Vec::new() },
+        let msg = match install::status() {
+            HelperStatus::Ready(r) => Msg::Status { helper: HelperState::Ready, active: r.active },
+            HelperStatus::Stale(r) => Msg::Status { helper: HelperState::Stale, active: r.active },
+            HelperStatus::Missing => Msg::Status { helper: HelperState::Missing, active: Vec::new() },
         };
         if tx.send(msg).is_err() {
             return;
@@ -590,30 +591,7 @@ fn spawn_poller(tx: Sender<Msg>, ctx: egui::Context) {
     });
 }
 
-fn human_bytes(n: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
-    let mut v = n as f64;
-    let mut u = 0;
-    while v >= 1024.0 && u < UNITS.len() - 1 {
-        v /= 1024.0;
-        u += 1;
-    }
-    if u == 0 { format!("{n} B") } else { format!("{v:.2} {}", UNITS[u]) }
-}
 
-fn ago(ts: u64) -> String {
-    if ts == 0 {
-        return "never".into();
-    }
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
-    let d = now.saturating_sub(ts);
-    match d {
-        0..=59 => format!("{d}s ago"),
-        60..=3599 => format!("{}m {}s ago", d / 60, d % 60),
-        3600..=86399 => format!("{}h {}m ago", d / 3600, (d % 3600) / 60),
-        _ => format!("{}d ago", d / 86400),
-    }
-}
 
 fn status_dot(ui: &mut egui::Ui, up: bool, busy: bool) {
     let color = if busy { ORANGE } else if up { GREEN } else { GRAY };
@@ -654,20 +632,7 @@ fn centered_row(ui: &mut egui::Ui, width: f32, add: impl FnOnce(&mut egui::Ui)) 
     });
 }
 
-fn last_handshake(s: &IfaceStats) -> u64 {
-    s.peers.iter().map(|p| p.latest_handshake).max().unwrap_or(0)
-}
 
-fn traffic_summary(s: &IfaceStats) -> String {
-    let rx: u64 = s.peers.iter().map(|p| p.rx).sum();
-    let tx: u64 = s.peers.iter().map(|p| p.tx).sum();
-    format!(
-        "{} received · {} sent · last handshake {}",
-        human_bytes(rx),
-        human_bytes(tx),
-        ago(last_handshake(s))
-    )
-}
 
 impl App {
     fn simple_view(&mut self, ui: &mut egui::Ui, act: &mut Option<Action>) {

@@ -10,6 +10,24 @@ source and bundled inside `Wirest.app` — no Homebrew, no Go.
 [Website & user guide](https://havban.github.io/wirest/) ·
 [Developer guide](docs/DEVELOPMENT.md)
 
+## Terminal & Linux servers (`wirest-tui`)
+
+The same one-click idea in a terminal UI, for macOS and Linux — including headless servers over
+SSH. Everything WireGuard needs is bundled (static binaries on Linux, any distro); it uses the
+kernel's WireGuard when available and falls back to BoringTun (containers, LXC/OpenVZ VPSes).
+
+```sh
+tar xzf wirest-tui-linux-x86_64.tar.gz && cd wirest-tui-linux-x86_64
+./install.sh                       # optional: installs to /usr/local
+wirest-tui                         # interactive: ↑↓ pick, Enter connect/disconnect
+wirest-tui add office.conf         # or: list, status, connect <name>, disconnect, helper …
+```
+
+Run it as root (`sudo wirest-tui`) to control WireGuard directly. As a normal user it installs
+the helper once (`sudo` asks for your password; a systemd service on Linux, a LaunchDaemon on
+macOS). Over SSH it warns before connecting a VPN that routes all traffic, which would cut the
+session off. Linux needs `iproute2`, and `resolvconf` for configs with `DNS =`.
+
 ## Build from source
 
 ```sh

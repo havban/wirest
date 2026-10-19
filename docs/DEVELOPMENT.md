@@ -6,143 +6,203 @@ you change behaviour.
 
 - Repo: https://github.com/havban/wirest (public, default branch `main`)
 - Docs site: GitHub Pages from `docs/` on `main` → https://havban.github.io/wirest/
-- Releases: https://github.com/havban/wirest/releases (assets built by `scripts/release.sh`)
+- Releases: https://github.com/havban/wirest/releases
 - Former name: **Wirus** (renamed 2026-10-17; the GitHub repo was renamed too)
 
 ## Current state (update this when you stop working)
 
-As of 2026-10-17:
+As of 2026-10-19:
 
-- **v0.1.0 released** (dmg/zip/SHA256SUMS + the bash and wireguard-tools source tarballs, which
-  `scripts/deps.sh` also uses as a download fallback). Docs site live from `main:/docs`
-  (Pages "legacy" build from a branch, no Actions workflow).
-- **Verified:** unit tests; helper install from the release build; tunnel up/down through the
-  helper (interface, routes, BoringTun cleanup); failed-up cleanup; hook/name rejection; app
-  screens via screenshots; release download checksum; building from a fresh clone.
-- **Not verified yet:** a real WireGuard server end to end (handshake, traffic, DNS); the
-  menu-bar icon visually and its menu actions (no click automation here); install on another Mac
-  / older macOS; the first-run Gatekeeper flow on a downloaded copy.
-- **This Mac:** the Wirest helper from the v0.1.0 build is installed. User tunnels dir has
-  `wg.conf`, an unfinished `+ New` template (hidden from the simple view).
-- **Product decision:** configs are imported from files (no server/provider integration) — see
-  *Product* below. Next likely asks: real-server testing, start at login, Intel/universal build,
-  notarization.
+- **v0.1.0 released** (macOS app only: dmg/zip/SHA256SUMS + the bash and wireguard-tools source
+  tarballs, which `scripts/deps.sh` also uses as a download fallback). Docs site live from
+  `main:/docs` (Pages "legacy" build from a branch, no Actions workflow).
+- **v0.2.0 in progress (not released):** Cargo workspace (core/helper/gui/tui), the terminal UI +
+  CLI `wirest-tui` for macOS and Linux, a separate `wirest-helper` binary, systemd helper on
+  Linux, static Linux packages for aarch64 and x86_64.
+- **Verified for 0.2.0:** unit tests; `tests/linux-smoke.sh` passes in Debian 12 containers on
+  aarch64 and x86_64 (static binaries, root direct mode, helper as a normal user, SSH guard,
+  hook refusal, full cleanup); the interactive TUI driven through tmux in Alpine (launch, connect,
+  log, disconnect, paste window, 60-column layout, quit).
+- **Not verified yet:** a real WireGuard server end to end (handshake, traffic, DNS); kernel
+  WireGuard on Linux (Apple container's kernel lacks it, so only the BoringTun fallback ran); the
+  systemd install path (containers have no systemd); the macOS menu-bar icon visually; install on
+  another Mac / older macOS; the Gatekeeper first-run flow.
+- **This Mac:** see *Environment notes*. User tunnels dir has `wg.conf`, an unfinished template.
+- **Product decisions:** configs are imported from files (no server/provider integration);
+  simple one-button UIs; no visible config errors in the GUI's simple view.
 
 ## Product
 
-A one-click WireGuard VPN client for macOS, in the spirit of Tailscale's Mac app:
+A one-click WireGuard VPN client, in the spirit of Tailscale. Two frontends share one core:
 
+**macOS app** (`Wirest.app`, egui):
 - **Simple view (default):** big status + one Connect/Disconnect button, VPN picker when there's
-  more than one, "Add VPN from file…" / "Paste config…". Only *complete* configs appear here;
-  unfinished ones (e.g. a `+ New` template) are visible only in Advanced, so the simple view never
-  shows config errors. After connecting it shows "Waiting for server…" until the first handshake,
-  then "Connected" with traffic counters.
-- **Advanced view** (toggle top right): tunnel list, Overview (interface/peer details, live stats),
-  Edit (text editor with validation, rename, delete), `+ New` (template with fresh keys), log
-  panel, "Remove helper…".
-- **Menu-bar icon** (tray): status line, Connect/Disconnect, Open Wirest, Quit. Closing the window
-  minimizes instead of quitting while the tray exists.
-- **One VPN at a time:** connecting another tunnel takes the current one down first.
-- **Configs come from files.** Decided with the owner: no built-in server/provider integration;
-  users import a `.conf` (drag & drop, file picker, or paste) once, then it's one click. Options
-  considered and declined for now: own coordination server (Tailscale-style join links),
-  Cloudflare WARP auto-registration (unofficial API), VPN-provider sign-in (e.g. Mullvad).
+  more than one, "Add VPN from file…" / "Paste config…". Only *complete* configs appear; unfinished
+  ones are visible only in Advanced. Shows "Waiting for server…" until the first handshake.
+- **Advanced view:** tunnel list, Overview (details, live stats), Edit (validated editor, rename,
+  delete), `+ New` (template with fresh keys), log panel, "Remove helper…".
+- **Menu-bar icon:** status, Connect/Disconnect, Open Wirest, Quit. Closing the window minimizes.
+
+**Terminal UI + CLI** (`wirest-tui`, ratatui; macOS and Linux incl. headless servers):
+- Interactive: VPN list + details, Enter connects/disconnects, `a` add file, `p` paste (bracketed
+  paste), `n` new (template in `$EDITOR`), `e` edit in `$EDITOR`, `d` delete, `l` log, `q` quit
+  (the VPN stays up). Incomplete configs are listed with an "incomplete" tag.
+- CLI: `list`, `status`, `connect <name> [--force]`, `disconnect [name]`, `add <file> [name]`,
+  `helper install|uninstall|status`.
+- **SSH guard:** inside an SSH session (`SSH_CONNECTION`), connecting a config that routes
+  `0.0.0.0/0` or `::/0` asks for confirmation (TUI) or needs `--force` (CLI) — it would cut the
+  session off.
+- As root it controls WireGuard directly (`Backend::Direct`); otherwise via the helper, installed
+  with `sudo` in the terminal on first use.
+
+Both: **one VPN at a time** (connecting another takes the current one down first); configs come
+from files. Options considered and declined for now: own coordination server (Tailscale-style
+join links), Cloudflare WARP auto-registration, VPN-provider sign-in.
 
 ## Layout
 
 ```
-src/main.rs      entry; `--helper` runs the root daemon, `--install-helper` / `--uninstall-helper`
-                 are terminal flags for troubleshooting; otherwise starts the GUI (eframe 0.32)
-src/app.rs       all UI: simple view, advanced view, dialogs, poller thread, connect jobs,
-                 tray sync. Actions are collected during rendering and applied after (`Action`).
-src/helper.rs    root helper: install/uninstall (via admin prompt), client `request()`,
-                 daemon (`run_daemon`), up/down, active-tunnel listing, BoringTun reaping
-src/tray.rs      menu-bar icon (tray-icon crate), template icons on/off
-src/config.rs    .conf parsing + validation, key generation (x25519), name rules, file storage
-src/wg.rs        locating tools, running wg-quick / `wg show all dump` (as root), admin prompt
-scripts/deps.sh  builds bundled tools into .deps/out/bin (see below)
-scripts/icons.sh regenerates icns/PNGs from assets/*.svg (uses scripts/render-svg.swift)
-scripts/release.sh  build + ad-hoc sign + dmg/zip/SHA256SUMS; `--publish` creates the GH release
-bundle.sh        deps + cargo build --release + assemble dist/Wirest.app
-run.sh           one-shot for users building from source: installs Rust if needed, bundles, opens
-assets/          icon.svg (app icon), logo-*.svg, tray.svg, generated PNG/ICNS
-docs/            GitHub Pages site (index.html, img/), this guide, release notes
+Cargo.toml              workspace (version lives in [workspace.package])
+crates/core/            wirest-core library
+  src/lib.rs            Backend: Direct (root) vs Helper; up/down/active/ensure_helper
+  src/config.rs         .conf parsing + validation, keys (x25519), names, per-OS tunnels_dir
+  src/store.rs          user tunnel files: load, add, import, unique names
+  src/protocol.rs       JSON-line protocol, socket path, client request(), build ids
+  src/daemon.rs         the helper's server loop (used by crates/helper)
+  src/ops.rs            root operations: up/down/active via wg-quick, BoringTun cleanup
+  src/install.rs        helper install/uninstall/status (LaunchDaemon | systemd), elevation
+  src/wg.rs             finding tools, running wg-quick / `wg show all dump`
+  src/format.rs         bytes, "5s ago", traffic summary
+crates/helper/          wirest-helper binary (`--socket-gid <gid>`), runs as root
+crates/gui/             wirest (macOS app): main.rs, app.rs (all UI), tray.rs (menu bar)
+crates/tui/             wirest-tui: main.rs (CLI), tui.rs (interactive UI)
+scripts/deps.sh         builds bundled tools into .deps/<os>-<arch>/bin (see below)
+scripts/package-tui.sh  dist/wirest-tui-<os>-<arch>.tar.gz for the current platform
+scripts/linux.sh        Linux packages on a Mac via Apple `container` (static, Alpine/musl)
+scripts/release.sh      macOS app: ad-hoc sign + dmg/zip/SHA256SUMS; `--publish` creates the release
+scripts/icons.sh        regenerates icns/PNGs from assets/*.svg (scripts/render-svg.swift)
+tests/linux-smoke.sh    end-to-end test of a Linux package inside a container
+bundle.sh               deps + release build + assemble dist/Wirest.app (incl. wirest-helper)
+run.sh                  one-shot for users building the Mac app from source
+assets/                 icon.svg, logo-*.svg, tray.svg, generated PNG/ICNS
+docs/                   GitHub Pages site (index.html, img/), this guide, release notes
 ```
+
+The GUI crate only builds on macOS; on Linux build `-p wirest-tui -p wirest-helper`.
 
 ## Architecture
 
 ```
-Wirest.app (user)                         wirest-helper (root LaunchDaemon)
-  app.rs  ──JSON line over /var/run/wirest.sock──▶  helper.rs
-   │  Request::Version / Up{name,config} / Down{name}     │
-   │  ◀── Response{ok, output, build, active[]} ──        ├─ writes /Library/Application Support/Wirest/tunnels/<name>.conf (root, 0600)
-   │                                                      ├─ bash wg-quick up|down <conf>   (tools in …/Wirest/bin, root-owned)
-   └─ poller: Version every 2 s (status + stats)          ├─ wg show all dump → stats
-                                                          └─ reap orphaned boringtun-cli
+Wirest.app / wirest-tui (user)                 wirest-helper (root: LaunchDaemon | systemd)
+  Backend::Helper ──JSON line over SOCKET──▶  daemon.rs → ops.rs
+   Version / Up{name,config} / Down{name}        ├─ writes STATE_DIR/<name>.conf (root, 0600)
+   ◀── Response{ok, output, build, active[]}     ├─ <bin>/bash <bin>/wg-quick up|down <conf>
+  poller: Version every 2 s (status + stats)     ├─ wg show all dump → stats
+                                                 └─ stops leftover BoringTun processes
+sudo wirest-tui → Backend::Direct → ops.rs (same functions, tools next to the binary)
 ```
 
-- **Helper install** (`helper::install`): one `osascript … with administrator privileges` shell
-  that copies the tools and the running binary (as `wirest-helper`) to
-  `/Library/Application Support/Wirest/bin`, strips xattrs (quarantine!), chowns root:wheel,
-  writes `/Library/LaunchDaemons/com.github.havban.wirest.helper.plist`, `launchctl bootstrap`s
-  it, removes any legacy `/etc/sudoers.d/wirest`, and waits for the socket.
-- **Auto-update of the helper:** `helper::build_id()` = crate version + hash of the executable.
-  The app compares it with the helper's; on mismatch the next Connect reinstalls (one prompt).
-  Consequence: **every rebuild of the app means one password prompt on next connect.**
-- **Socket:** `/var/run/wirest.sock`, `root:staff` `0660` — any local user in `staff` can ask it
-  to bring tunnels up/down. That's why the helper (a) uses only its own root-owned tools,
-  (b) validates names (`config::valid_name`) and (c) rejects configs with errors, including
-  `PreUp/PostUp/PreDown/PostDown` (they'd run as root).
-- **Status:** active tunnels = `/var/run/wireguard/<name>.name` files whose utun shows up in
-  `wg show all dump`. Stats (handshake, rx/tx) come from the same dump.
-- User configs live in `~/Library/Application Support/Wirest/tunnels` (0700/0600). The app sends
-  the config text on each Up; the helper's copy is just what wg-quick reads.
+| | macOS | Linux |
+| --- | --- | --- |
+| socket | `/var/run/wirest.sock` | `/run/wirest.sock` |
+| helper + tools | `/Library/Application Support/Wirest/bin` | `/usr/local/lib/wirest/bin` |
+| state (root copies of configs) | `/Library/Application Support/Wirest/tunnels` | `/var/lib/wirest/tunnels` |
+| service | LaunchDaemon `com.github.havban.wirest.helper` | `wirest-helper.service` (needs systemd) |
+| user configs | `~/Library/Application Support/Wirest/tunnels` | `~/.config/wirest/tunnels` |
+| interface | `utunN`, mapped via `/var/run/wireguard/<name>.name` | named after the tunnel |
+
+- **Install** (`install::install`): one root shell script that copies the tools and the shipped
+  `wirest-helper` (found next to the frontend binary: `Wirest.app/Contents/MacOS/`, or the TUI
+  package dir) into the bin dir, makes everything root-owned, writes the service, (re)starts it
+  and waits for the socket. macOS also strips xattrs (quarantine would stop launchd). Elevation:
+  `AdminDialog` (osascript password dialog, GUI) or `Terminal` (`sudo`, or nothing when root).
+- **Socket access:** `root:<gid>` `0660`. gid = the installing user's group; when the install
+  runs as root, `SUDO_GID`, else `staff` (20) on macOS. So the helper can be reached by those
+  users only — and it therefore (a) uses only its root-owned tools, (b) validates names, (c)
+  refuses configs with errors, including `PreUp/PostUp/PreDown/PostDown` (they'd run as root).
+- **Helper versioning:** `protocol::file_build_id` — release builds: the crate version only (the
+  GUI and TUI of one release share a helper without reinstall prompts); debug builds: version +
+  hash of the helper binary (every rebuild reinstalls, so fixes are picked up during dev).
+- **Status:** Linux: interfaces from `wg show all dump` (named after tunnels). macOS: `.name`
+  files whose utun is in the dump.
 
 ## Bundled tools (`scripts/deps.sh`)
 
-No Homebrew and no Go. Pinned + sha256-verified downloads, built into `.deps/out/bin`:
+No Homebrew, no Go, no distro packages. Pinned + sha256-verified downloads (upstream, then a GNU
+mirror, then copies on our v0.1.0 release; slow sources are abandoned after 20 s < 50 KB/s),
+built into `.deps/<os>-<arch>/bin`:
 
 | Tool | Source | Notes |
 | --- | --- | --- |
-| `wg`, `wg-quick` | wireguard-tools 1.0.20250521 | **patched**: `wg setconf` no longer sends `fwmark` (BoringTun returns EINVAL for it on macOS) |
-| `bash` | GNU bash 5.3 | wg-quick needs bash ≥ 4 |
-| `boringtun-cli` | boringtun 0.6.0 via `cargo install` | replaces wireguard-go |
-| `wireguard-go` | 2-line shim | wg-quick calls `wireguard-go utun`; shim execs `boringtun-cli --disable-drop-privileges` |
+| `wg`, `wg-quick` | wireguard-tools 1.0.20250521 | macOS: **patched** so `wg setconf` doesn't send `fwmark` (BoringTun EINVAL). wg-quick: darwin.bash / linux.bash |
+| `bash` | GNU bash 5.3 | wg-quick needs bash ≥ 4 (macOS has 3.2, Alpine none) |
+| `boringtun-cli` | boringtun 0.6.0 via `cargo install` | replaces wireguard-go; on Linux only used without kernel WireGuard |
+| `wireguard-go` | 2-line shim | wg-quick calls `wireguard-go <iface>`; shim execs `boringtun-cli --disable-drop-privileges` |
 
-- `MACOSX_DEPLOYMENT_TARGET=11.0` is exported; without it clang targets the build machine's macOS
-  (27 here) and the release wouldn't run on older Macs. Check with
-  `otool -l <bin> | grep -A4 LC_BUILD_VERSION`.
-- `BUILD_REV` + a stamp file force a full rebuild when build settings/patches change — bump it.
-- wg-quick finds `wireguard-go`/`wg` in its own directory (it prepends `${SELF%/*}` to PATH);
-  the helper always runs it as `<bin>/bash <bin>/wg-quick` so bash 3.2 is never used.
+- macOS: `MACOSX_DEPLOYMENT_TARGET=11.0` (clang otherwise targets the build machine's macOS).
+  Check with `otool -l <bin> | grep -A4 LC_BUILD_VERSION`.
+- Linux: `LDFLAGS=-static` on musl (Alpine) → static binaries that run on any distro. Linux
+  boringtun-cli is installed **without `--locked`**: its 2023 lockfile pins a getrandom that
+  calls `open64`, which musl ≥ 1.2.4 removed.
+- `BUILD_REV` + a stamp file force a full rebuild when settings/patches change — bump it.
+- `WIREST_BUILD_DIR` moves unpacking/compiling elsewhere (container builds: the shared host
+  folder can't hold the tarballs' symlinks).
+- wg-quick finds `wg`/`wireguard-go` in its own directory; it's always run as
+  `<bin>/bash <bin>/wg-quick`.
+- Linux runtime needs `iproute2` (`ip`); `resolvconf` for configs with `DNS =`.
 
 ### BoringTun quirks (important)
 
-1. **fwmark** — see the wg patch above.
-2. **Doesn't exit on `wg-quick down`.** wg-quick stops wireguard-go by deleting its UAPI socket;
-   BoringTun ignores that and keeps the utun + routes alive. `helper::reap_orphans` kills any of
-   our `boringtun-cli` processes whose `/var/run/wireguard/*.sock` (found via `lsof -F n`) no
-   longer exists. Runs after down, after a failed up, and at helper start.
-3. Writes the utun name to `WG_TUN_NAME_FILE` (wg-quick relies on it) — verified in source.
-4. Logs to `/tmp/boringtun.out`.
+1. **fwmark** on macOS — see the wg patch.
+2. **Doesn't exit when its tunnel goes down.** wg-quick expects the userspace implementation to
+   exit (macOS: it deletes the UAPI socket; Linux: it deletes the interface). BoringTun keeps
+   running — on macOS with the utun and routes. `ops::stop_userspace` (after down / failed up)
+   and `ops::reap_orphans` (helper start; macOS uses it after down too) stop it.
+3. **SIGTERM is handled asynchronously** (BoringTun blocks it and processes it in its event loop,
+   taking up to ~1 s). `ops::terminate` sends SIGTERM, waits up to 3 s, then SIGKILL.
+4. Linux without kernel WireGuard: `ip link add … type wireguard` prints "Unknown device type"
+   before wg-quick's own fallback note; `ops::explain_fallback` drops that line.
+5. Writes the utun name to `WG_TUN_NAME_FILE` on macOS; logs to `/tmp/boringtun.out`.
 
 ## Building & running
 
 ```sh
 export PATH="$HOME/.cargo/bin:$PATH"   # rustup toolchain; /opt/homebrew/bin/cargo is an old 1.67
 cargo build && cargo test              # 6 unit tests (config parsing, keys, names, template)
-./run.sh                               # full build + open dist/Wirest.app
-./target/debug/wirest                  # dev run; finds tools in .deps/out/bin (debug builds only)
+./run.sh                               # Mac app: full build + open dist/Wirest.app
+./target/debug/wirest-tui              # TUI dev run (tools from .deps/<os>-<arch>/bin)
+scripts/package-tui.sh                 # dist/wirest-tui-macos-aarch64.tar.gz
+scripts/linux.sh                       # dist/wirest-tui-linux-{aarch64,x86_64}.tar.gz
 ```
 
-Debug builds look for tools in `<exe>/../Resources/bin`, then `.deps/out/bin` (debug only), then
-Homebrew.
+Tools are looked up in `<exe>/../Resources/bin`, `<exe dir>`, `.deps/<os>-<arch>/bin` (debug
+builds only), then Homebrew / system dirs.
 
-## Testing the helper without clicking
+## Testing
 
-The helper can be driven directly over its socket (any user in `staff`). Safe test config: route
-only `10.123.45.0/24`, no DNS, endpoint in TEST-NET (`203.0.113.10`), so the Mac's internet is
-untouched:
+### Linux (Apple `container`)
+
+Apple's `container` 1.5.0 is installed (`/usr/local/bin/container`; `container system start`
+if it isn't running). Each container is a small VM with its own Linux kernel; `--arch amd64`
+runs x86_64 via Rosetta. The default kernel has **no WireGuard module**, so tests exercise the
+BoringTun fallback; `--cap-add CAP_NET_ADMIN` is needed for interfaces.
+
+```sh
+scripts/linux.sh arm64      # build (first run ~5 min; caches in .deps/ and target/linux-*)
+container run --rm --arch arm64 --cap-add CAP_NET_ADMIN -v "$PWD:/src" docker.io/library/debian:12-slim \
+  bash -c "apt-get update -qq && apt-get install -y -qq iproute2 procps binutils >/dev/null && \
+           bash /src/tests/linux-smoke.sh /src/dist/wirest-tui-linux-aarch64.tar.gz"
+scripts/linux.sh shell arm64  # interactive shell in the build image
+```
+
+The interactive TUI can be driven with tmux inside a container (`apk add tmux`):
+`tmux new-session -d -s t -x 100 -y 24 wirest-tui; tmux send-keys -t t Enter; tmux capture-pane -p -t t`.
+There's no tmux on the Mac itself (Homebrew is broken).
+
+### macOS helper
+
+Drive the helper over its socket (users in `staff`), with a safe config: route only
+`10.123.45.0/24`, no DNS, endpoint in TEST-NET (`203.0.113.10`):
 
 ```python
 import base64, json, os, socket
@@ -157,60 +217,54 @@ print(req({"cmd": "up", "name": "wirestest", "config": conf}))
 print(req({"cmd": "down", "name": "wirestest"}))
 ```
 
-Verified (2026-10-17, macOS 27): up creates utunN with address + route; down removes utun,
-routes and the boringtun process; a failed up (unresolvable endpoint) leaves nothing behind;
-`PostUp` configs and path-like names are refused. Afterwards check
-`ifconfig -l`, `netstat -rn -f inet | grep 10.123.45`, `pgrep -fl Wirest/bin/boringtun`.
+Or the CLI: `wirest-tui add test.conf && wirest-tui connect test && wirest-tui disconnect`.
+Check afterwards: `ifconfig -l`, `netstat -rn -f inet | grep 10.123.45`,
+`pgrep -fl Wirest/bin/boringtun`. Installing the helper needs a password: from this
+non-interactive shell use
+`osascript -e 'do shell script "<path>/wirest-tui helper install" with administrator privileges'`
+(the user enters it in a dialog; `sudo` can't prompt here).
 
-`./target/debug/wirest --install-helper` installs/updates the helper (password prompt).
+### Mac app screenshots
 
-### Screenshots / UI checks
-
-No accessibility automation is available in this environment; capture windows with
-`screencapture -x -o -l <windowid>`. Get the id with CoreGraphics (match `kCGWindowName ==
-"Wirest"` — the app also owns blank 500×500 and menu-bar-sized windows):
+No click automation here; capture windows with `screencapture -x -o -l <windowid>`. Get the id
+with CoreGraphics (match `kCGWindowName == "Wirest"`; the app also owns blank and menu-bar-sized
+windows):
 
 ```sh
 PID=$(pgrep -f Wirest.app/Contents/MacOS)
 swift -e "import CoreGraphics; let l = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as! [[String:Any]]; for w in l where (w[\"kCGWindowOwnerPID\"] as? Int) == $PID && (w[\"kCGWindowName\"] as? String) == \"Wirest\" { print(w[\"kCGWindowNumber\"]!) }"
 ```
 
-The menu-bar icon can't be captured this way on macOS 27 (status items are drawn by the
-system). `Tray::new` logs `menu-bar icon unavailable: …` to stderr if creation fails.
-
-egui's default fonts lack many symbols (`●`, `＋`, arrows rendered as boxes) — paint shapes or
-use plain text; `⚠` works.
+The menu-bar icon can't be captured this way on macOS 27. egui's default fonts lack many symbols
+(`●`, `＋`, arrows render as boxes) — paint shapes or use plain text; `⚠` works.
 
 ## Releasing
 
-1. Bump `version` in `Cargo.toml`; update `docs/release-notes.md`.
-2. `scripts/release.sh` → `dist/Wirest-macOS-arm64.{dmg,zip}` + `SHA256SUMS` (asset names are
-   unversioned so `releases/latest/download/…` links on the docs page keep working).
-3. `scripts/release.sh --publish` (creates tag `v<version>` and the release with `gh`).
+1. Bump `version` in the root `Cargo.toml` (`[workspace.package]`); update `docs/release-notes.md`.
+2. `scripts/release.sh` → `dist/Wirest-macOS-arm64.{dmg,zip}` + `SHA256SUMS`.
+3. `scripts/package-tui.sh` (Mac) and `scripts/linux.sh` → `dist/wirest-tui-*.tar.gz`.
+4. `scripts/release.sh --publish` creates tag `v<version>` + the release with the app assets; add
+   the TUI tarballs with `gh release upload v<version> dist/wirest-tui-*.tar.gz`.
+   Asset names are unversioned so `releases/latest/download/…` links keep working.
 
-Signing: ad-hoc only (`codesign -s -`), not notarized — there's no Apple Developer ID. Users must
-allow the app once (System Settings → Privacy & Security → Open Anyway); the docs page explains.
-`spctl -a -vv dist/Wirest.app` reports "rejected" — expected.
+Signing: ad-hoc only (`codesign -s -`), not notarized — no Apple Developer ID. Users allow the
+app once (System Settings → Privacy & Security → Open Anyway); the docs page explains.
 
 ## Environment notes (this Mac)
 
-- macOS 27 on Apple Silicon. Homebrew is broken here (doesn't recognise macOS 27) — don't rely on it.
+- macOS 27 on Apple Silicon. Homebrew is broken here (doesn't recognise macOS 27).
 - Rust via rustup in `~/.cargo/bin` (not on PATH by default).
-- GitHub: push over HTTPS with the gh credential helper (`gh auth setup-git` done). SSH key isn't
-  registered with GitHub.
-- An old Intel-only git at `/usr/local/git` was removed; `git` is Apple's `/usr/bin/git`.
+- Apple `container` 1.5.0 installed for Linux builds/tests. Rancher Desktop and podman on this
+  Mac are Intel-only binaries and don't run.
+- GitHub: HTTPS with the gh credential helper (`gh auth setup-git` done); SSH key not registered.
+- `git` is Apple's `/usr/bin/git` (an old Intel-only git in `/usr/local/git` was removed).
 
 ## Known limitations / ideas
 
-- Not notarized (needs Apple Developer ID); arm64 only (no universal build yet).
-- Rebuilding the app changes `build_id`, so the helper is reinstalled (one prompt) on next connect.
-  A stable protocol version instead of an exe hash would avoid prompts across updates, at the cost
-  of not shipping helper fixes automatically.
-- Menu-bar actions when the window is minimized depend on egui still processing events; Quit and
-  Connect/Disconnect run in the tray handler directly, but "Open Wirest" sends viewport commands.
+- Not notarized; macOS arm64 only (no universal build).
+- The helper on Linux needs systemd; without it, run `wirest-tui` as root.
 - No start-at-login, no reconnect on wake / network change, no on-demand rules.
-- The tray status says "Connected to X" even while waiting for the first handshake (the window
-  distinguishes them).
-- No universal/Intel build; `--deep` codesign is deprecated by Apple but fine for ad-hoc.
+- GUI tray status says "Connected to X" even while waiting for the first handshake.
+- GUI `app.rs` still has its own `Tunnel` loading; the TUI uses `core::store` — could share.
 - Possible next steps: Tailscale-style join links with a small server, QR import, kill switch,
-  per-app/on-demand rules, auto-update (Sparkle-like).
+  auto-update, packages for apt/dnf/Homebrew, a one-line `curl | sh` installer for servers.

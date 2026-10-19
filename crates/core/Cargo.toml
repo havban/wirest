@@ -1,0 +1,14 @@
+[package]
+name = "wirest-core"
+description = "Shared Wirest logic: configs, keys, the helper protocol and tunnel control"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+dirs.workspace = true
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+getrandom = "0.2"
+base64 = "0.22"
+libc = "0.2"

@@ -1,0 +1,12 @@
+[package]
+name = "wirest"
+description = "One-click WireGuard VPN app for macOS"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+wirest-core.workspace = true
+dirs.workspace = true
+eframe = "0.32"
+rfd = "0.15"
+tray-icon = "0.26.1"

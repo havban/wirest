@@ -23,8 +23,8 @@ fn load(png: &[u8]) -> Result<Icon, String> {
 
 impl Tray {
     pub fn new() -> Result<Self, String> {
-        let on = load(include_bytes!("../assets/tray-on.png"))?;
-        let off = load(include_bytes!("../assets/tray-off.png"))?;
+        let on = load(include_bytes!("../../../assets/tray-on.png"))?;
+        let off = load(include_bytes!("../../../assets/tray-off.png"))?;
         let status = MenuItem::new("Not connected", false, None);
         let toggle = MenuItem::new("Connect", false, None);
         let open = MenuItem::new("Open Wirest", true, None);

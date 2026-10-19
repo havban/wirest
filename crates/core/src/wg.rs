@@ -1,12 +1,13 @@
 //! Locates and runs wireguard-tools (`wg`, `wg-quick`). The run functions
-//! need root; they are called by the helper daemon.
+//! need root; they are called by the helper daemon, or directly when a
+//! frontend already runs as root.
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 /// System directories appended after the tools' own directory in PATH.
-const PATH_ENV: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
+const PATH_ENV: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 
 /// Everything wg-quick needs, copied into the helper's root-owned bin dir.
 pub const TOOL_FILES: [&str; 5] = ["wg", "wg-quick", "bash", "wireguard-go", "boringtun-cli"];
@@ -17,7 +18,7 @@ pub struct Tools {
     pub wg: PathBuf,
     pub wg_quick: PathBuf,
     /// wg-quick needs bash >= 4; it is always run through this one rather
-    /// than macOS's bash 3.2.
+    /// than whatever `bash` the system has (macOS ships 3.2, Alpine none).
     pub bash: PathBuf,
 }
 
@@ -40,23 +41,31 @@ impl Tools {
     }
 }
 
-/// Candidate tool directories, most preferred first: inside the .app
-/// bundle, the dev build from scripts/deps.sh, then Homebrew.
+/// Directory of the running executable.
+pub fn exe_dir() -> Option<PathBuf> {
+    std::env::current_exe().ok()?.parent().map(Path::to_path_buf)
+}
+
+/// Candidate tool directories, most preferred first: inside the macOS .app
+/// bundle, next to the executable (release tarballs), the dev build from
+/// scripts/deps.sh, then system installs.
 fn tool_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(contents) = exe.parent().and_then(Path::parent) {
+    if let Some(exe) = exe_dir() {
+        if let Some(contents) = exe.parent() {
             dirs.push(contents.join("Resources/bin"));
         }
+        dirs.push(exe);
     }
     if cfg!(debug_assertions) {
-        dirs.push(Path::new(env!("CARGO_MANIFEST_DIR")).join(".deps/out/bin"));
+        let plat = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+        dirs.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.deps").join(plat).join("bin"));
     }
-    dirs.extend(["/opt/homebrew/bin", "/usr/local/bin"].map(PathBuf::from));
+    dirs.extend(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"].map(PathBuf::from));
     dirs
 }
 
-/// Tools the app can hand to the helper installer.
+/// Tools to run directly (as root) or to hand to the helper installer.
 pub fn find_tools() -> Option<Tools> {
     tool_dirs().into_iter().map(Tools::in_dir).find(Tools::exists)
 }
@@ -77,7 +86,7 @@ pub struct IfaceStats {
     pub peers: Vec<PeerStats>,
 }
 
-fn run(cmd: &mut Command) -> Result<String, String> {
+pub(crate) fn run(cmd: &mut Command) -> Result<String, String> {
     match cmd.stdin(Stdio::null()).output() {
         Ok(o) => {
             let mut s = String::from_utf8_lossy(&o.stdout).into_owned();
@@ -94,26 +103,6 @@ fn run(cmd: &mut Command) -> Result<String, String> {
 
 pub fn shq(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
-}
-
-fn applescript_escape(s: &str) -> String {
-    s.replace('\\', r"\\").replace('"', "\\\"")
-}
-
-/// Runs a shell snippet as root behind the standard macOS password prompt.
-pub fn as_admin(sh: &str, prompt: &str) -> Result<String, String> {
-    let script = format!(
-        "do shell script \"{}\" with prompt \"{}\" with administrator privileges",
-        applescript_escape(sh),
-        applescript_escape(prompt)
-    );
-    run(Command::new("/usr/bin/osascript").arg("-e").arg(script)).map_err(|e| {
-        if e.contains("-128") {
-            "Cancelled".into()
-        } else {
-            e
-        }
-    })
 }
 
 /// `wg-quick up|down <conf>`; must run as root.

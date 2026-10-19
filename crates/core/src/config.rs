@@ -231,11 +231,23 @@ pub fn sanitize_name(raw: &str) -> String {
     }
 }
 
+/// The user's own configs: `~/Library/Application Support/Wirest/tunnels` on
+/// macOS (shared by the GUI and TUI), `~/.config/wirest/tunnels` on Linux.
 pub fn tunnels_dir() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("Wirest")
-        .join("tunnels")
+    let base = if cfg!(target_os = "macos") {
+        dirs::data_dir().map(|d| d.join("Wirest"))
+    } else {
+        dirs::config_dir().map(|d| d.join("wirest"))
+    };
+    base.unwrap_or_else(|| PathBuf::from(".")).join("tunnels")
+}
+
+/// True if any peer routes all traffic through the tunnel.
+pub fn routes_everything(p: &Parsed) -> bool {
+    p.peers
+        .iter()
+        .flat_map(|peer| &peer.allowed_ips)
+        .any(|ip| ip == "0.0.0.0/0" || ip == "::/0")
 }
 
 pub fn ensure_dir(dir: &Path) -> std::io::Result<()> {
