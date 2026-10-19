@@ -82,7 +82,7 @@
   .card h3 { margin: 0 0 6px; font-size: 17px; }
   .card p { margin: 0; color: var(--muted); font-size: 15px; }
 
-  ol.steps { list-style: none; padding: 0; margin: 0; counter-reset: s; display: grid; gap: 14px; }
+  ol.steps { list-style: none; padding: 0; margin: 0; counter-reset: s; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
   ol.steps li { counter-increment: s; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px 18px 64px; position: relative; }
   ol.steps li::before { content: counter(s); position: absolute; left: 20px; top: 17px; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-weight: 700; display: grid; place-items: center; font-size: 14px; }
   ol.steps li strong { display: block; margin-bottom: 2px; }
@@ -95,7 +95,7 @@
   pre { background: var(--code-bg); padding: 14px 16px; border-radius: 12px; overflow-x: auto; margin: 10px 0 0; }
   pre code { background: none; padding: 0; }
 
-  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+  .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
   details { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin-bottom: 10px; }
   details summary { cursor: pointer; font-weight: 600; }
   details p, details ul { color: var(--muted); font-size: 15px; margin: 10px 0 0; }
@@ -121,6 +121,7 @@
       <div class="links">
         <a href="#install">Install</a>
         <a href="#use" class="hide-sm">How to use</a>
+        <a href="#terminal">Linux &amp; terminal</a>
         <a href="#how" class="hide-sm">How it works</a>
         <a href="https://github.com/havban/wirest">GitHub</a>
       </div>
@@ -134,7 +135,7 @@
         <a class="btn primary" href="https://github.com/havban/wirest/releases/latest/download/Wirest-macOS-arm64.dmg">Download for Mac</a>
         <a class="btn ghost" href="https://github.com/havban/wirest">View source</a>
       </div>
-      <p class="fine">Apple Silicon (M1 or newer) · macOS 11 or later · Free and open source</p>
+      <p class="fine">Mac app: Apple Silicon, macOS 11+ · <a href="#terminal">Linux &amp; terminal version</a> · Free and open source</p>
     </div>
     <div class="window" aria-label="Wirest app window">
       <div class="bar"><i></i><i></i><i></i></div>
@@ -193,6 +194,45 @@
     </div>
   </section>
 
+  <section id="terminal">
+    <div class="wrap">
+      <h2>Linux servers &amp; the terminal</h2>
+      <p class="sub"><code>wirest-tui</code> is the same one-click idea in a terminal — for headless Linux servers over SSH, and the Mac terminal.</p>
+      <div class="two">
+        <div>
+          <pre><code>┌ Wirest ──────────────────────── root ┐
+│● Connected to office                 │
+│1.2 MiB received · 300 KiB sent       │
+└──────────────────────────────────────┘
+┌ VPNs ────────┐┌ office ──────────────┐
+│  ○ home      ││Status    Connected   │
+│▶ ● office    ││Address   10.0.0.2    │
+│  ! draft     ││Endpoint  vpn:51820   │
+└──────────────┘└──────────────────────┘
+ enter disconnect  a add  p paste  q quit</code></pre>
+        </div>
+        <div>
+          <ol class="steps">
+            <li><strong>Download and install</strong><span>On the server (use <code>aarch64</code> for ARM):</span>
+              <pre><code>curl -fLO https://github.com/havban/wirest/releases/latest/download/wirest-tui-linux-x86_64.tar.gz
+tar xzf wirest-tui-linux-x86_64.tar.gz
+sudo ./wirest-tui-linux-x86_64/install.sh</code></pre></li>
+            <li><strong>Add your VPN</strong><span><code>wirest-tui add office.conf</code>, or press <em>a</em> / <em>p</em> in the UI.</span></li>
+            <li><strong>Connect</strong><span>Run <code>wirest-tui</code> and press Enter — or <code>wirest-tui connect office</code> in scripts.</span></li>
+          </ol>
+        </div>
+      </div>
+      <div class="grid" style="margin-top: 18px;">
+        <div class="card"><h3>Any distro, nothing to install</h3><p>Static binaries with WireGuard's tools, bash and BoringTun built in. Needs only <code>iproute2</code> (and <code>resolvconf</code> for configs with DNS).</p></div>
+        <div class="card"><h3>Kernel or userspace</h3><p>Uses the kernel's WireGuard when it's there; otherwise BoringTun, so it also works in containers and LXC/OpenVZ VPSes.</p></div>
+        <div class="card"><h3>Won't lock you out</h3><p>Over SSH, Wirest asks before connecting a VPN that sends all traffic through the tunnel, which would cut off your session.</p></div>
+      </div>
+      <div class="note">
+        <p>Run it as root (<code>sudo wirest-tui</code>) to control WireGuard directly. As a normal user it installs a small helper once — a systemd service on Linux — and <code>sudo</code> asks for your password that one time. Downloads: <a href="https://github.com/havban/wirest/releases/latest/download/wirest-tui-linux-x86_64.tar.gz">Linux x86_64</a> · <a href="https://github.com/havban/wirest/releases/latest/download/wirest-tui-linux-aarch64.tar.gz">Linux arm64</a> · <a href="https://github.com/havban/wirest/releases/latest/download/wirest-tui-macos-aarch64.tar.gz">macOS terminal</a>.</p>
+      </div>
+    </div>
+  </section>
+
   <section id="how">
     <div class="wrap">
       <h2>How it works</h2>
@@ -218,7 +258,7 @@
       <details><summary>How do I quit Wirest?</summary><p>Closing the window keeps Wirest in the menu bar. Choose <em>Quit Wirest</em> from the menu-bar icon, or press ⌘Q. Your VPN stays connected until you disconnect.</p></details>
       <details><summary>How do I uninstall it?</summary>
         <p>Switch on <em>Advanced</em> and click <em>Remove helper…</em>, then drag Wirest from Applications to the Trash. Your configs are in <code>~/Library/Application Support/Wirest</code> if you want to remove those too.</p></details>
-      <details><summary>Does it work on Intel Macs?</summary><p>Not yet; the download is for Apple Silicon. You can build it yourself from source on any Mac.</p></details>
+      <details><summary>Does it work on Intel Macs, or on Linux desktops?</summary><p>The Mac app is for Apple Silicon (you can build it yourself on any Mac). On Linux, use the <a href="#terminal">terminal version</a>, which runs on any distro, x86_64 or arm64.</p></details>
       <details><summary>Build it from source</summary>
         <p>You need Xcode Command Line Tools. Everything else is installed automatically:</p>
         <pre><code>git clone https://github.com/havban/wirest

@@ -1,16 +1,26 @@
-First release of **Wirest**, a one-click WireGuard VPN app for Mac.
+**Wirest 0.2.0** adds a terminal version for Linux servers and the Mac terminal.
 
-### Highlights
-- One big **Connect** button; details live behind **Advanced**
-- Menu-bar icon with Connect / Disconnect
-- Asks for your Mac password once (to install its helper), then never again
-- Add a VPN by dropping in a `.conf` file, picking one, or pasting it
-- Shows "Waiting for server…" until the VPN server actually answers
-- WireGuard tools and BoringTun built in — nothing else to install
+### New: `wirest-tui` for terminals and Linux servers
+- The same one-click idea in a terminal UI: pick a VPN, press Enter to connect
+- Works on headless servers over SSH, on Linux (x86_64 and arm64, any distro) and macOS
+- Everything is included and statically built: WireGuard tools, bash and BoringTun. Uses the
+  kernel's WireGuard when available, BoringTun otherwise (containers, LXC/OpenVZ VPSes)
+- Commands for scripts: `list`, `status`, `connect <name>`, `disconnect`, `add <file>`
+- Warns before connecting a VPN that would cut off your SSH session
+- Run it as root, or let it install the helper once (`sudo` asks for your password; systemd on Linux)
 
-### Install
-Download **Wirest-macOS-arm64.dmg**, drag Wirest to Applications and open it. Because the app
-isn't notarized yet, macOS asks you to allow it once: **System Settings → Privacy & Security →
-Open Anyway**. Full guide: https://havban.github.io/wirest/
+### Mac app
+- Now shares its helper with `wirest-tui`; updating installs the new helper once
+- Shows "Waiting for server…" until the VPN server answers
 
-Requires an Apple Silicon Mac, macOS 11 or later.
+### Downloads
+| | |
+| --- | --- |
+| Mac app | **Wirest-macOS-arm64.dmg** (Apple Silicon, macOS 11+) |
+| Linux server, Intel/AMD | **wirest-tui-linux-x86_64.tar.gz** |
+| Linux server, ARM | **wirest-tui-linux-aarch64.tar.gz** |
+| Mac terminal | **wirest-tui-macos-aarch64.tar.gz** |
+
+On a server: `curl -fLO https://github.com/havban/wirest/releases/latest/download/wirest-tui-linux-x86_64.tar.gz && tar xzf wirest-tui-linux-x86_64.tar.gz && sudo ./wirest-tui-linux-x86_64/install.sh`
+
+Full guide: https://havban.github.io/wirest/

@@ -1,8 +1,10 @@
 #!/bin/bash
-# Builds dist/Wirest.app and packages it for a GitHub release:
+# Builds everything for a GitHub release:
 #   dist/Wirest-macOS-arm64.dmg  (drag-to-Applications disk image)
 #   dist/Wirest-macOS-arm64.zip
+#   dist/wirest-tui-macos-aarch64.tar.gz, dist/wirest-tui-linux-{aarch64,x86_64}.tar.gz
 #   dist/SHA256SUMS
+# The Linux packages are built in Apple `container` VMs (scripts/linux.sh).
 # The asset names carry no version so releases/latest/download/<name> links stay stable.
 #   scripts/release.sh            build the files
 #   scripts/release.sh --publish  also create the GitHub release v<Cargo version> with gh
@@ -28,10 +30,14 @@ cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 hdiutil create -quiet -volname "Wirest" -srcfolder "$STAGE" -ov -format UDZO "dist/$NAME.dmg"
 
-(cd dist && shasum -a 256 "$NAME.dmg" "$NAME.zip" > SHA256SUMS)
+./scripts/package-tui.sh
+./scripts/linux.sh
+TUI=(wirest-tui-macos-aarch64.tar.gz wirest-tui-linux-aarch64.tar.gz wirest-tui-linux-x86_64.tar.gz)
+
+(cd dist && shasum -a 256 "$NAME.dmg" "$NAME.zip" "${TUI[@]}" > SHA256SUMS)
 echo "==> Wirest $VERSION packaged:"; cat dist/SHA256SUMS
 
 if [[ "${1:-}" == "--publish" ]]; then
-    gh release create "v$VERSION" "dist/$NAME.dmg" "dist/$NAME.zip" dist/SHA256SUMS \
+    gh release create "v$VERSION" "dist/$NAME.dmg" "dist/$NAME.zip" "${TUI[@]/#/dist/}" dist/SHA256SUMS \
         --title "Wirest $VERSION" --notes-file docs/release-notes.md
 fi
